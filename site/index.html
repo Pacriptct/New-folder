@@ -111,22 +111,19 @@
 
     <div class="about-grid">
       <div class="about-photos">
-        <!-- Drop your photos into the site/images folder and update the src
-             below. Filenames about-1.jpg / about-2.jpg / about-3.jpg work
-             out of the box. -->
+        <!-- Just drop photos named about-1, about-2, about-3 into the
+             site/images folder. Any common format works automatically
+             (.jpeg .jpg .png .webp .heic) — no need to rename extensions. -->
         <figure class="photo photo-big">
-          <img src="images/about-1.jpg" alt="Birdwatchers — photo one"
-               onerror="this.closest('figure').classList.add('placeholder')" />
+          <img alt="Birdwatchers — photo one" data-photo="about-1" />
           <figcaption>📷 Photo 1</figcaption>
         </figure>
         <figure class="photo">
-          <img src="images/about-2.jpg" alt="Birdwatchers — photo two"
-               onerror="this.closest('figure').classList.add('placeholder')" />
+          <img alt="Birdwatchers — photo two" data-photo="about-2" />
           <figcaption>📷 Photo 2</figcaption>
         </figure>
         <figure class="photo">
-          <img src="images/about-3.jpg" alt="Birdwatchers — photo three"
-               onerror="this.closest('figure').classList.add('placeholder')" />
+          <img alt="Birdwatchers — photo three" data-photo="about-3" />
           <figcaption>📷 Photo 3</figcaption>
         </figure>
       </div>
@@ -153,6 +150,27 @@
     <p class="footer-tag">One dish. Three drinks. Infinite vibes.</p>
     <p class="footer-fine">Scan, sit, and enjoy. · A family production.</p>
   </footer>
+
+  <script>
+    // Try a few common image extensions for each About photo, in order.
+    // First one that loads wins; if none exist, show the tidy placeholder.
+    (function () {
+      var exts = ["jpeg", "jpg", "png", "webp", "JPG", "JPEG", "PNG", "heic"];
+      document.querySelectorAll("img[data-photo]").forEach(function (img) {
+        var name = img.getAttribute("data-photo");
+        var i = 0;
+        function tryNext() {
+          if (i >= exts.length) {
+            img.closest("figure").classList.add("placeholder");
+            return;
+          }
+          img.src = "images/" + name + "." + exts[i++];
+        }
+        img.onerror = tryNext;
+        tryNext();
+      });
+    })();
+  </script>
 
 </body>
 </html>
