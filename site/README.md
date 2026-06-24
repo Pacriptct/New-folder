@@ -34,6 +34,26 @@ Press `Ctrl+C` to stop the server.
 PORT=8080 python3 serve.py
 ```
 
+## Share it with family who aren't on your Wi-Fi
+
+Want family back home to see it? Open a temporary public link:
+
+```bash
+# one-time install of the free tunnel tool
+brew install cloudflared
+
+# then, whenever you want to share:
+python3 share.py
+```
+
+You'll get a public link like `https://something.trycloudflare.com` plus a
+QR code. Text the link to family — it works from anywhere while `share.py`
+is running. Your photos never leave your Mac (they're streamed live).
+Press `Ctrl+C` to take the site offline again.
+
+> Don't have Homebrew? Install it from https://brew.sh first, then run the
+> `brew install cloudflared` line above.
+
 ## Adding your About photos
 
 Drop your photos into the `images/` folder named:
