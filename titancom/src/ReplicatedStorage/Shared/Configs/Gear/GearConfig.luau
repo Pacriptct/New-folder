@@ -11,18 +11,18 @@ GearConfig.Presets = {
 		MaxForce = Vector3.new(90000, 90000, 90000),
 		MaxTorque = Vector3.new(30000, 30000, 30000),
 
-		Speed = 135,
+		Speed = 145,
 		BoostMultiplier = 1.18,
 
 		LerpSpeed = 0.06,
-		OrbitLerpSpeed = 0.12,
+		OrbitLerpSpeed = 0.028,
 
-		OrbitSpeed = 165,
-		OrbitBoostMultiplier = 1.12,
+		OrbitSpeed = 210,
+		OrbitBoostMultiplier = 1.25,
 		OrbitBoostDistanceMultiplier = 1.0,
 		OrbitEntrySnapStrength = 1.0,
 		OrbitTightenDuration = 0,
-		MinOrbitDistance = 95,
+		MinOrbitDistance = 25,
 		MaxOrbitDistance = 200,
 
 		OutOfGasSwingEnabled = true,
@@ -44,15 +44,15 @@ GearConfig.Presets = {
 		VDashAttachGraceTime = 0.2,
 
 		MomentumGain = 0.014,
-		MomentumLoss = 0.000055,
+		MomentumLoss = 0.00055,
 		MinMomentum = 0.18,
 		MaxMomentum = 1.35,
 
 		SpeedRetentionMultiplier = 0.98,
 		ReleaseForwardBoost = 1.02,
-		MaxReleaseSpeed = 250,
+		MaxReleaseSpeed = 350,
 		ReleaseVerticalPreserve = 0.9,
-		MaxUpwardReleaseSpeed = 70,
+		MaxUpwardReleaseSpeed = 350,
 		ReleaseCarryTime = 0.6,
 
 		RehookMomentumFromSpeed = 0.55,
@@ -79,11 +79,11 @@ GearConfig.Presets = {
 		GroundSlideSparksMinRate = 0,
 		GroundSlideSparksMaxRate = 22,
 
-		HookTravelSpeed = 850,
+		HookTravelSpeed = 1500,
 		HookTravelMaxDistance = 750,
 		HookVisualSize = Vector3.new(0.25, 0.25, 0.25),
 
-		HookClipEnabled = true,
+		HookClipEnabled = false,
 		HookClipMinDistance = 2,
 
 		RopeWidth = 0.08,
@@ -112,19 +112,19 @@ GearConfig.Presets = {
 
 		GrappleRange = 750,
 
-		Speed = 120,
+		Speed = 128,
 		BoostMultiplier = 1.42,
 
 		LerpSpeed = 0.055,
-		OrbitLerpSpeed = 0.14,
+		OrbitLerpSpeed = 0.028,
 
-		OrbitSpeed = 195,
-		OrbitBoostMultiplier = 1.22,
+		OrbitSpeed = 210,
+		OrbitBoostMultiplier = 1.25,
 		OrbitBoostDistanceMultiplier = 1.0,
 		OrbitEntrySnapStrength = 1.0,
 		OrbitTightenDuration = 0,
-		MinOrbitDistance = 85,
-		MaxOrbitDistance = 220,
+		MinOrbitDistance = 25,
+		MaxOrbitDistance = 100,
 
 		OutOfGasRopeSlack = 1.25,
 		OutOfGasRopeRestitution = 0,
@@ -139,9 +139,9 @@ GearConfig.Presets = {
 
 		SpeedRetentionMultiplier = 0.92,
 		ReleaseForwardBoost = 1.02,
-		MaxReleaseSpeed = 205,
+		MaxReleaseSpeed = 300,
 		ReleaseVerticalPreserve = 0.9,
-		MaxUpwardReleaseSpeed = 70,
+		MaxUpwardReleaseSpeed = 300,
 		ReleaseCarryTime = 0.6,
 
 		RehookMomentumFromSpeed = 0.78,

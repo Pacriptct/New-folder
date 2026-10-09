@@ -1,3 +1,12 @@
+-- WeaponBase: Abstract base for all weapon types.
+--
+-- Provides the component lifecycle (init/equip/unequip/update/destroy) and a
+-- shared cooldown gate so subclasses only need to call WeaponBase.attack(self)
+-- to enforce the timing constraint.
+--
+-- Subclasses override attack(), and optionally equip/unequip/update to add
+-- type-specific behaviour (durability consumption, reload ticking, etc.).
+
 local WeaponBase = {}
 WeaponBase.__index = WeaponBase
 
@@ -34,6 +43,7 @@ function WeaponBase:unequip()
 	self._equipped = false
 end
 
+-- Subclasses with per-frame logic (reload ticking, swing windows) override this.
 function WeaponBase:update(_dt: number) end
 
 function WeaponBase:destroy()

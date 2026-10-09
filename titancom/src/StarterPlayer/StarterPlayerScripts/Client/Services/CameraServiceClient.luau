@@ -39,6 +39,7 @@ CameraServiceClient._odmCurrentTilt = 0
 CameraServiceClient._odmShakeTime = 0
 CameraServiceClient._odmShakeOffset = Vector3.zero
 CameraServiceClient._currentCameraOffset = Vector3.zero
+CameraServiceClient._fovOverride = nil :: number?
 
 function CameraServiceClient:init()
 	if self._initialized then return end
@@ -67,6 +68,11 @@ function CameraServiceClient:SetODMEnabled(enabled: boolean, character: Model?)
 		self._odmBoosting = false
 		self._odmOrbitSide = nil
 	end
+end
+
+-- Pins the FOV (e.g. the ODM gas-flip punch) until cleared with nil.
+function CameraServiceClient:SetFOVOverride(fov: number?)
+	self._fovOverride = fov
 end
 
 function CameraServiceClient:SetODMBoosting(boosting: boolean)
@@ -153,7 +159,7 @@ function CameraServiceClient:_update(dt: number)
 	if not self._odmEnabled then
 		-- Release lerps
 		self._odmCurrentFOV += (BASE_FOV - self._odmCurrentFOV) * RELEASE_FOV_LERP
-		camera.FieldOfView = self._odmCurrentFOV
+		camera.FieldOfView = self._fovOverride or self._odmCurrentFOV
 		self._odmCurrentTilt += (0 - self._odmCurrentTilt) * RELEASE_TILT_LERP
 		self._odmShakeOffset = self._odmShakeOffset:Lerp(Vector3.zero, RELEASE_SHAKE_LERP)
 		camera.CFrame = camera.CFrame * CFrame.new(self._odmShakeOffset) * CFrame.Angles(0, 0, math.rad(self._odmCurrentTilt))
@@ -166,7 +172,7 @@ function CameraServiceClient:_update(dt: number)
 	local targetFOV = BASE_FOV + (MAX_FOV - BASE_FOV) * speedAlpha
 	if self._odmBoosting then targetFOV += BOOST_FOV_BONUS end
 	self._odmCurrentFOV += (targetFOV - self._odmCurrentFOV) * FOV_LERP
-	camera.FieldOfView = self._odmCurrentFOV
+	camera.FieldOfView = self._fovOverride or self._odmCurrentFOV
 
 	-- Tilt
 	local targetTilt = 0

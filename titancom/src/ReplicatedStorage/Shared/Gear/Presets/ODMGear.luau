@@ -10,9 +10,10 @@
 -- savedState is an optional table from PlayerData / ProfileService so gas and
 -- reserve counts survive respawn without a full refill.
 
-local GearBase = require(script.Parent.Parent.GearBase)
-local MobilityComponent = require(script.Parent.Parent.MobilityComponent)
-local BladeWeapon = require(script.Parent.Parent.Weapons.BladeWeapon)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GearBase = require(ReplicatedStorage.Shared.Gear.GearBase)
+local MobilityComponent = require(ReplicatedStorage.Shared.Gear.MobilityComponent)
+local BladeWeapon = require(ReplicatedStorage.Shared.Gear.Weapons.BladeWeapon)
 
 local ODMGear = {}
 

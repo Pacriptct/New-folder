@@ -5,6 +5,7 @@ local Debris = game:GetService("Debris")
 local Networker = require(ReplicatedStorage.Packages.Networker)
 local GearRegistry = require(ReplicatedStorage.Shared.Gear.GearRegistry)
 local AudioGroups = require(ReplicatedStorage.Shared.Modules.AudioGroups)
+local ODMWireService = require(script.Parent.ODMWireService)
 
 local GearService = {}
 
@@ -958,6 +959,7 @@ function GearService:equipGear(player, preset)
 		activePairIndex = state.ActiveBladePairIndex,
 	}
 	self:_createGearInstance(player, resolvedPreset, savedState)
+	ODMWireService:onEquip(player)
 
 	self:endBladeSwing(player)
 	self:_applyServerGearVisibility(player)
@@ -973,6 +975,7 @@ function GearService:unequipGear(player)
 	state.BladesOut = false
 
 	self:_destroyGearInstance(player)
+	ODMWireService:onUnequip(player)
 	self:endBladeSwing(player)
 	self:_applyServerGearVisibility(player)
 	self:_broadcastState(player)

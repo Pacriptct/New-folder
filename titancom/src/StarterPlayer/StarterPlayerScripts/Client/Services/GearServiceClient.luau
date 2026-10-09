@@ -2,15 +2,14 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
 
 local Networker = require(ReplicatedStorage.Packages.Networker)
 local GearRegistry = require(ReplicatedStorage.Shared.Gear.GearRegistry)
-local General = require(ReplicatedStorage.Shared.Modules.General)
-local ManeuverModule = require(ReplicatedStorage.Shared.Modules.ManeuverModule)
 local AnimationController = require(ReplicatedStorage.Shared.Modules.AnimationController)
 local InputServiceClient = require(script.Parent.InputServiceClient)
 local CameraServiceClient = require(script.Parent.CameraServiceClient)
+local ODMMovementClient = require(script.Parent.ODMMovementClient)
 local StateMachine = require(ReplicatedStorage.Shared.StateMachine)
 local AudioGroups = require(ReplicatedStorage.Shared.Modules.AudioGroups)
 
@@ -78,19 +77,6 @@ local CONFIG = {
 	ReloadHoldTime = 0.28,
 	BladeDropLifetime = 8,
 
-	WallRunCheckDistance = 5.5,
-	WallRunMinSpeed = 24,
-	WallRunGroundGraceTime = 0.18,
-	WallRunLostWallGraceTime = 0.16,
-
-	HookShotGasCost = 0.25,
-	MinimumBoostGas = 1,
-	BoostGasCostPerSecond = 7,
-	GasDrainTick = 0.15,
-	GasCrossfeedTick = 0.5,
-	VDashGasCost = 18,
-	VDashAttachGraceTime = 0.2,
-
 	SoundCooldowns = {
 		Shot = 0.08,
 		Retract = 0.1,
@@ -113,7 +99,7 @@ local CONFIG = {
 -- Gear lifecycle
 GearServiceClient._initialized = false
 GearServiceClient._gearInstance = nil
-GearServiceClient._maneuver = nil
+GearServiceClient._movement = nil
 GearServiceClient._character = nil :: Model?
 GearServiceClient._rootPart = nil :: BasePart?
 GearServiceClient._equipped = false
@@ -164,17 +150,8 @@ GearServiceClient._gearCondition = nil
 GearServiceClient._talentModifierUnsub = nil
 
 -- Input state
-GearServiceClient._hookLeftHeld = false
-GearServiceClient._hookRightHeld = false
-GearServiceClient._orbitLeftHeld = false
-GearServiceClient._orbitRightHeld = false
-GearServiceClient._boostHeld = false
-GearServiceClient._executeHeld = false
-GearServiceClient._executePressedAt = 0
-GearServiceClient._vDashAttemptId = 0
 GearServiceClient._reloadHeld = false
 GearServiceClient._reloadPressTime = 0
-GearServiceClient._grappleDebounce = { Left = false, Right = false }
 GearServiceClient._attackDebounce = false
 GearServiceClient._heavyAttackDebounce = false
 GearServiceClient._isSwinging = false
@@ -188,18 +165,9 @@ GearServiceClient._currentLoopAnimation = nil :: string?
 GearServiceClient._gasCheckDebounce = false
 GearServiceClient._gasCheckSequenceId = 0
 GearServiceClient._lastSliceName = nil :: string?
-GearServiceClient._orbitStartPlayingUntil = 0
-GearServiceClient._gasDrainAccumulator = 0
-GearServiceClient._gasCrossfeedAccumulator = 0
 GearServiceClient._slashSoundIndex = 0
 GearServiceClient._gearSounds = {}
 GearServiceClient._lastSoundPlayedAt = {}
-
--- Wall run
-GearServiceClient._wallRunSide = nil
-GearServiceClient._odmWallRunActive = false
-GearServiceClient._lastWallRunWallTime = 0
-GearServiceClient._lastWallRunAirTime = 0
 
 -- Speed lines
 GearServiceClient._speedLinesGui = nil :: ScreenGui?
@@ -267,9 +235,6 @@ end
 function GearServiceClient:talentModifiersUpdated(modifiers: any)
 	self.Modifiers = self:_normalizeTalentModifiers(modifiers)
 	self:_rebuildStatMultipliers()
-	if self._maneuver and self._maneuver.SetStatMultipliers then
-		self._maneuver:SetStatMultipliers(self:getODMMultipliers())
-	end
 end
 
 function GearServiceClient:getTalentModifiers()
@@ -313,9 +278,6 @@ function GearServiceClient:applyBladeDamageMultiplier(baseDamage: number): numbe
 end
 
 function GearServiceClient:RefreshGearModifiers()
-	if self._maneuver and self._maneuver.SetStatMultipliers then
-		self._maneuver:SetStatMultipliers(self:getODMMultipliers())
-	end
 end
 
 function GearServiceClient:_bindTalentServiceClient()
@@ -417,24 +379,34 @@ function GearServiceClient:getGearInstance()
 end
 
 ------------------------------------------------------------
--- Physics (ManeuverModule)
+-- Physics (ODMMovementClient)
 ------------------------------------------------------------
 
-function GearServiceClient:_createManeuver(character: Model, presetName: string)
-	if self._maneuver then
-		self._maneuver:Destroy()
-		self._maneuver = nil
+function GearServiceClient:_createMovement(character: Model)
+	if self._movement then
+		self._movement:Destroy()
+		self._movement = nil
 	end
-	self._maneuver = ManeuverModule.new(character, presetName, CameraServiceClient)
-	self:RefreshGearModifiers()
+	-- Yields until the server's movers replicate.
+	local movement = ODMMovementClient.new(character, {
+		IsArmed = function()
+			return self._equipped == true and self._handlesOut == true
+		end,
+		CameraService = CameraServiceClient,
+	})
+	if not movement then
+		return
+	end
+	if not self._equipped or self._character ~= character then
+		-- Unequipped (or re-equipped) while waiting.
+		movement:Destroy()
+		return
+	end
+	self._movement = movement
 end
 
 function GearServiceClient:SetGearPreset(name: string)
 	self._loadoutPreset = name
-	if self._maneuver then
-		self._maneuver:ApplyPreset(name)
-		self:RefreshGearModifiers()
-	end
 	if self._gearInstance and self._gearInstance.Mobility then
 		self._gearInstance.Mobility:setPreset(name)
 	end
@@ -447,8 +419,8 @@ function GearServiceClient:GetGearPreset(): string
 	return self._loadoutPreset or CONFIG.DefaultGearPreset
 end
 
-function GearServiceClient:GetManeuver()
-	return self._maneuver
+function GearServiceClient:GetMovement()
+	return self._movement
 end
 
 function GearServiceClient:IsEquipped(): boolean
@@ -610,66 +582,25 @@ function GearServiceClient:_refreshODMAnimations()
 		return
 	end
 
-	local m = self._maneuver
-	local isHooking = m and m:IsHooking()
-	local isDoubleHooking = m and m:IsDoubleHooking()
-	local isGroundSliding = m and m.IsGroundSliding and m:IsGroundSliding()
-	local isVDashing = m and m.IsVDashing and m:IsVDashing()
-
-	if self._odmWallRunActive and self._wallRunSide then
-		self:_setActiveODMState("ODMWallRunning")
-		self:_setLoopAnimation(self._wallRunSide == "Left" and ANIMS.LeftWallRun or ANIMS.RightWallRun)
-		return
-	end
-
-	if isVDashing then
-		self:_setActiveODMState("ODMVDashing")
-		self:_setLoopAnimation(if self._bladesOut then nil else ANIMS.DoubleHookIdle)
-		return
-	end
-
-	if isGroundSliding then
+	-- Hooked / sliding / airborne animations belong to ODMMovementClient;
+	-- the handles idle only plays standing on the ground.
+	local m = self._movement
+	if m and m:IsSliding() then
 		self:_setActiveODMState("ODMGroundSliding")
-		self:_setLoopAnimation(ANIMS.GroundDrag)
+		self:_setLoopAnimation(nil)
 		return
 	end
-
-	if isHooking then
-		local activeState = (self._orbitLeftHeld or self._orbitRightHeld) and "ODMOrbiting" or "ODMHooking"
-		self:_setActiveODMState(activeState)
-
-		if os.clock() < self._orbitStartPlayingUntil then
-			return
-		end
-		if m and m.IsSlidingOnGround and m:IsSlidingOnGround() then
-			self:_setLoopAnimation(ANIMS.GroundDrag)
-			return
-		end
-		if self._orbitLeftHeld then
-			self:_setLoopAnimation(ANIMS.LeftOrbitIdle)
-			return
-		end
-		if self._orbitRightHeld then
-			self:_setLoopAnimation(ANIMS.RightOrbitIdle)
-			return
-		end
-		if isDoubleHooking then
-			self:_setLoopAnimation(ANIMS.DoubleHookIdle)
-			return
-		end
-		if self._hookLeftHeld then
-			self:_setLoopAnimation(ANIMS.LeftHookIdle)
-			return
-		end
-		if self._hookRightHeld then
-			self:_setLoopAnimation(ANIMS.RightHookIdle)
-			return
-		end
-		self:_setLoopAnimation(ANIMS.HookIdle)
+	if m and m:IsHooking() then
+		self:_setActiveODMState("ODMHooking")
+		self:_setLoopAnimation(nil)
 		return
 	end
 
 	self:_setActiveODMState(nil)
+	if m and not m:IsOnGround() then
+		self:_setLoopAnimation(nil)
+		return
+	end
 	local track = self:_setLoopAnimation(ANIMS.GearIdle)
 	if track then
 		track:AdjustWeight(0.35, 0.15)
@@ -1096,140 +1027,20 @@ end
 -- Gas Usage (per-frame drain / crossfeed)
 ------------------------------------------------------------
 
-function GearServiceClient:_hasEnoughBoostGas(): boolean
-	return self:hasGas(self:getGasCost(CONFIG.MinimumBoostGas), "Both")
-end
-
-function GearServiceClient:_setBoostAllowed(allowed: boolean)
-	if self._maneuver and self._maneuver.SetBoostAllowed then
-		self._maneuver:SetBoostAllowed(allowed)
-	end
-end
-
-function GearServiceClient:_setOutOfGasSwinging(enabled: boolean)
-	if self._maneuver and self._maneuver.SetOutOfGasSwinging then
-		self._maneuver:SetOutOfGasSwinging(enabled)
-	end
-end
-
-function GearServiceClient:_updateGasUsage(dt: number)
-	if not self._equipped or not self._handlesOut or not self._maneuver then
-		self:_setGearLoopSound("GasHiss", false)
+-- Gas lives in ODMMovementClient; mirror it for the gas check and UI.
+function GearServiceClient:_syncGasFromMovement()
+	local m = self._movement
+	if not m then
 		return
 	end
-
-	self._gasCrossfeedAccumulator += dt
-	if self._gasCrossfeedAccumulator >= CONFIG.GasCrossfeedTick then
-		networker:fire("clientCrossfeedGas", self._gasCrossfeedAccumulator)
-		self._gasCrossfeedAccumulator = 0
-	end
-
-	local isHooking = self._maneuver:IsHooking()
-	local isOutOfGasSwinging = self._maneuver.IsOutOfGasSwinging and self._maneuver:IsOutOfGasSwinging()
-	self:_setGearLoopSound("GasHiss", isHooking == true and not isOutOfGasSwinging)
-
-	if not isHooking then
-		self:_setOutOfGasSwinging(false)
-		self:_setBoostAllowed(self:_hasEnoughBoostGas())
-		return
-	end
-
-	if not self._boostHeld then
-		self:_setBoostAllowed(self:_hasEnoughBoostGas())
-		return
-	end
-
-	self._gasDrainAccumulator += dt
-	if self._gasDrainAccumulator < CONFIG.GasDrainTick then
-		return
-	end
-
-	local drainAmount = self:getGasCost(CONFIG.BoostGasCostPerSecond * self._gasDrainAccumulator)
-	if not self:hasGas(drainAmount, "Both") then
-		self._boostHeld = false
-		self:_setBoostAllowed(false)
-		self._maneuver:SetBoost(false)
-		self:_setOutOfGasSwinging(true)
-		self:_refreshODMAnimations()
-		return
-	end
-
-	networker:fire("clientConsumeGas", drainAmount, "Both")
-	self._gasDrainAccumulator = 0
-	local stillHasGas = self:_hasEnoughBoostGas()
-	self:_setBoostAllowed(stillHasGas)
-	if stillHasGas then
-		self:_setOutOfGasSwinging(false)
-	else
-		self._boostHeld = false
-		self._maneuver:SetBoost(false)
-		self:_setOutOfGasSwinging(true)
-	end
+	local left, right, maxLeft, maxRight = m:GetGas()
+	local r = self.Resources
+	r.GasLeft, r.GasRight, r.MaxGasLeft, r.MaxGasRight = left, right, maxLeft, maxRight
 end
 
 ------------------------------------------------------------
 -- Wall Run
 ------------------------------------------------------------
-
-function GearServiceClient:_clearODMWallRun()
-	self._wallRunSide = nil
-	self._odmWallRunActive = false
-	self._lastWallRunWallTime = 0
-	self._lastWallRunAirTime = 0
-	if self._currentLoopAnimation == ANIMS.LeftWallRun or self._currentLoopAnimation == ANIMS.RightWallRun then
-		self:_setLoopAnimation(nil)
-	end
-	StateMachine.RemoveStates(LocalPlayer, "ODMWallRunning")
-end
-
-function GearServiceClient:_updateODMWallRunAnimation()
-	if not self._equipped or not self._handlesOut or not self._rootPart or not self._character then
-		self:_clearODMWallRun()
-		return
-	end
-	if self._maneuver and self._maneuver.IsVDashing and self._maneuver:IsVDashing() then
-		self:_clearODMWallRun()
-		return
-	end
-
-	local isHooking = self._maneuver and self._maneuver:IsHooking()
-	if not isHooking and not self._odmWallRunActive then
-		self:_clearODMWallRun()
-		return
-	end
-
-	local now = os.clock()
-	local humanoid = self._character:FindFirstChildOfClass("Humanoid")
-	if humanoid and humanoid.FloorMaterial == Enum.Material.Air then
-		self._lastWallRunAirTime = now
-	end
-
-	local recentlyAirborne = now - self._lastWallRunAirTime <= CONFIG.WallRunGroundGraceTime
-	if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air and not recentlyAirborne then
-		self:_clearODMWallRun()
-		return
-	end
-
-	local vel = self._rootPart.AssemblyLinearVelocity
-	if Vector3.new(vel.X, 0, vel.Z).Magnitude < CONFIG.WallRunMinSpeed then
-		self:_clearODMWallRun()
-		return
-	end
-
-	local side = General:GetSideWallHit(self._character, self._rootPart, CONFIG.WallRunCheckDistance)
-	if side then
-		self._lastWallRunWallTime = now
-		self._wallRunSide = side
-	elseif now - self._lastWallRunWallTime > CONFIG.WallRunLostWallGraceTime then
-		self:_clearODMWallRun()
-		return
-	end
-
-	if isHooking then
-		self._odmWallRunActive = true
-		StateMachine.SetState(LocalPlayer, "ODMWallRunning", true)
-	end
-end
 
 ------------------------------------------------------------
 -- Speed Lines
@@ -1300,11 +1111,11 @@ function GearServiceClient:_createScreenSpeedLine(speedAlpha: number)
 end
 
 function GearServiceClient:_updateScreenSpeedLines()
-	if not self._equipped or not self._handlesOut or not self._maneuver or not self._rootPart then
+	if not self._equipped or not self._handlesOut or not self._movement or not self._rootPart then
 		self:_setSpeedLinesEnabled(false)
 		return
 	end
-	if not self._maneuver:IsHooking() then
+	if not self._movement:IsHooking() then
 		self:_setSpeedLinesEnabled(false)
 		return
 	end
@@ -1326,7 +1137,7 @@ end
 ------------------------------------------------------------
 
 function GearServiceClient:_canUseODM(): boolean
-	return self._equipped == true and self._handlesOut == true and self._maneuver ~= nil
+	return self._equipped == true and self._handlesOut == true and self._movement ~= nil
 end
 
 function GearServiceClient:_canAttack(): boolean
@@ -1340,23 +1151,8 @@ function GearServiceClient:_canAttack(): boolean
 end
 
 function GearServiceClient:_releaseHookState()
-	self._hookLeftHeld = false
-	self._hookRightHeld = false
-	self._orbitLeftHeld = false
-	self._orbitRightHeld = false
-	self._boostHeld = false
-	self:_setGearLoopSound("GasHiss", false)
-	if self._maneuver then
-		self._maneuver:SetBoost(false)
-		self:_setOutOfGasSwinging(false)
-		self._maneuver:SetOrbitHeld("Left", false)
-		self._maneuver:SetOrbitHeld("Right", false)
-		pcall(function()
-			self._maneuver:EndGrapple("Left")
-		end)
-		pcall(function()
-			self._maneuver:EndGrapple("Right")
-		end)
+	if self._movement then
+		self._movement:Release()
 	end
 end
 
@@ -1382,8 +1178,8 @@ function GearServiceClient:_setHandlesOut(handlesOut: boolean, replicate: boolea
 		self:_applyGearVisibility()
 		self:_setCordAttachmentsHolstered(false)
 		self:_setLoopAnimation(ANIMS.GearIdle)
-		self:_syncHeldInputs(false)
 		self:_refreshODMAnimations()
+		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.Backpack, false)
 		return
 	end
 
@@ -1391,7 +1187,7 @@ function GearServiceClient:_setHandlesOut(handlesOut: boolean, replicate: boolea
 	self._bladesOut = false
 	StateMachine.SetState(LocalPlayer, "ODMBladesOut", false)
 	self:_releaseHookState()
-	self:_clearODMWallRun()
+	pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.Backpack, true)
 	self:_setLoopAnimation(nil)
 	self:_setActiveODMState(nil)
 	self._handlesOut = false
@@ -1504,85 +1300,9 @@ end
 -- Input Helpers
 ------------------------------------------------------------
 
-function GearServiceClient:_syncHeldInputs(playOrbitStart: boolean)
-	if not self._maneuver then
-		return
-	end
-	local boostHeld = InputServiceClient:IsActionHeld("GearBoost")
-	local leftHeld = InputServiceClient:IsActionHeld("OrbitLeft") or UserInputService:IsKeyDown(Enum.KeyCode.A)
-	local rightHeld = InputServiceClient:IsActionHeld("OrbitRight") or UserInputService:IsKeyDown(Enum.KeyCode.D)
-	local hasGas = self:_hasEnoughBoostGas()
-
-	self:_setBoostAllowed(hasGas)
-	self._boostHeld = boostHeld and hasGas
-	self._maneuver:SetBoost(self._boostHeld)
-
-	if self._boostHeld then
-		self:_setOutOfGasSwinging(false)
-	elseif self._maneuver:IsHooking() and boostHeld and not hasGas then
-		self:_setOutOfGasSwinging(true)
-	end
-
-	if leftHeld and not rightHeld then
-		self._orbitLeftHeld, self._orbitRightHeld = true, false
-		self._maneuver:SetOrbitHeld("Left", true)
-		self._maneuver:SetOrbitHeld("Right", false)
-		if playOrbitStart then
-			self:_playOrbitStart("Left")
-		end
-		return
-	end
-
-	if rightHeld and not leftHeld then
-		self._orbitLeftHeld, self._orbitRightHeld = false, true
-		self._maneuver:SetOrbitHeld("Left", false)
-		self._maneuver:SetOrbitHeld("Right", true)
-		if playOrbitStart then
-			self:_playOrbitStart("Right")
-		end
-		return
-	end
-
-	self._orbitLeftHeld, self._orbitRightHeld = false, false
-	self._maneuver:SetOrbitHeld("Left", false)
-	self._maneuver:SetOrbitHeld("Right", false)
-end
-
-function GearServiceClient:_playOrbitStart(side: string)
-	self:_setLoopAnimation(nil)
-	self._orbitStartPlayingUntil = os.clock() + CONFIG.OrbitStartHoldTime
-	self:_playGearSound("Orbit")
-	self:_playOneShot(side == "Left" and ANIMS.LeftOrbitStart or ANIMS.RightOrbitStart)
-	task.delay(CONFIG.OrbitStartHoldTime, function()
-		if self._equipped then
-			self:_refreshODMAnimations()
-		end
-	end)
-end
-
-function GearServiceClient:_playHookStart(side: string)
-	if self._hookLeftHeld and self._hookRightHeld then
-		self:_playOneShot(ANIMS.DoubleHookStart)
-	elseif side == "Left" then
-		self:_playOneShot(ANIMS.LeftHookStart)
-	else
-		self:_playOneShot(ANIMS.RightHookStart)
-	end
-end
-
 function GearServiceClient:_resetInputState()
-	self._hookLeftHeld = false
-	self._hookRightHeld = false
-	self._orbitLeftHeld = false
-	self._orbitRightHeld = false
-	self._boostHeld = false
-	self._executeHeld = false
-	self._executePressedAt = 0
-	self._vDashAttemptId += 1
 	self._reloadHeld = false
 	self._reloadPressTime = 0
-	self._grappleDebounce.Left = false
-	self._grappleDebounce.Right = false
 	self._attackDebounce = false
 	self._heavyAttackDebounce = false
 	self._isSwinging = false
@@ -1595,248 +1315,11 @@ end
 -- Input Handlers
 ------------------------------------------------------------
 
-function GearServiceClient:_onHook(side: string, state: string, _inputObject: InputObject)
-	if not self:_canUseODM() then
-		return
-	end
-
-	if state == "Began" then
-		if side == "Left" then
-			self._hookLeftHeld = true
-		else
-			self._hookRightHeld = true
-		end
-		if self._grappleDebounce[side] then
-			self:_refreshODMAnimations()
-			return
-		end
-
-		local hookCost = self:getGasCost(CONFIG.HookShotGasCost)
-		if not self:hasGas(hookCost, side) then
-			self:_refreshODMAnimations()
-			return
-		end
-
-		local mouse = LocalPlayer:GetMouse()
-		local target = mouse and mouse.Hit.Position
-		if not target or not self._maneuver then
-			self:_refreshODMAnimations()
-			return
-		end
-
-		self._grappleDebounce[side] = true
-		networker:fire("clientConsumeGas", hookCost, side)
-		self._maneuver:BeginGrapple(side, target)
-		
-		self:_playGearSound("Shot")
-		self:_playHookStart(side)
-
-		task.spawn(function()
-			local startTime = os.clock()
-			while self._equipped and self._maneuver and os.clock() - startTime < CONFIG.HookAttachWaitTime do
-				if self._maneuver:IsHookAttached(side) then
-					if self._maneuver:IsOtherHookAttached(side) then
-						self:_playOneShot(ANIMS.DoubleHookStart)
-					end
-					self:_syncHeldInputs(true)
-					self:_refreshODMAnimations()
-					return
-				end
-				task.wait()
-			end
-			if self._equipped then
-				self:_syncHeldInputs(false)
-				self:_refreshODMAnimations()
-			end
-		end)
-
-		task.delay(CONFIG.GrappleDebounceTime, function()
-			self._grappleDebounce[side] = false
-		end)
-	elseif state == "Ended" then
-		local wasActive = false
-		if self._maneuver then
-			wasActive = (self._maneuver.IsHookAttached and self._maneuver:IsHookAttached(side))
-				or (side == "Left" and self._hookLeftHeld or self._hookRightHeld)
-		end
-
-		if side == "Left" then
-			self._hookLeftHeld = false
-		else
-			self._hookRightHeld = false
-		end
-
-		if self._maneuver then
-			if wasActive then
-				self:_playGearSound("Retract")
-			end
-			pcall(function()
-				self._maneuver:EndGrapple(side)
-			end)
-			if not self._maneuver:IsHooking() then
-				self:_setOutOfGasSwinging(false)
-				self:_setGearLoopSound("GasHiss", false)
-			end
-		end
-		self:_refreshODMAnimations()
-	end
-
-	if os.clock() >= self._orbitStartPlayingUntil then
-		self:_refreshODMAnimations()
-	end
-end
-
-function GearServiceClient:_onOrbit(side: string, state: string)
-	if not self:_canUseODM() or not self._maneuver then
-		return
-	end
-	local opposite = side == "Left" and "Right" or "Left"
-
-	if state == "Began" then
-		self._orbitLeftHeld = side == "Left"
-		self._orbitRightHeld = side == "Right"
-		self._maneuver:SetOrbitHeld(side, true)
-		self._maneuver:SetOrbitHeld(opposite, false)
-		if self._maneuver:IsHooking() then
-			self:_playOrbitStart(side)
-		end
-	elseif state == "Ended" then
-		if side == "Left" then
-			self._orbitLeftHeld = false
-		else
-			self._orbitRightHeld = false
-		end
-		self._maneuver:SetOrbitHeld(side, false)
-	end
-
-	self:_refreshODMAnimations()
-end
-
-function GearServiceClient:_tryVDash(): boolean
-	if not self._executeHeld or not self:_canUseODM() or not self._maneuver then
-		return false
-	end
-	if self._isSwinging then
-		return false
-	end
-	if self._maneuver.IsVDashing and self._maneuver:IsVDashing() then
-		return true
-	end
-	if not self._maneuver:IsDoubleHooking() then
-		return false
-	end
-
-	local vDashCost = self:getGasCost(CONFIG.VDashGasCost)
-	if not self:hasGas(vDashCost, "Both") then
-		self:_setBoostAllowed(false)
-		return false
-	end
-
-	local target = self._maneuver.GetDoubleHookTargetPosition and self._maneuver:GetDoubleHookTargetPosition()
-	if not target then
-		return false
-	end
-
-	self:_setBoostAllowed(true)
-	local wasOrbiting = self._orbitLeftHeld or self._orbitRightHeld
-	local didDash = self._maneuver:VDashToPosition(target)
-
-	if didDash then
-		networker:fire("clientConsumeGas", vDashCost, "Both")
-		self:_setOutOfGasSwinging(false)
-		self:_playGearSound(wasOrbiting and "OrbitBurst" or "Dash")
-		if self._bladesOut then
-			self:_playOneShot(ANIMS.VerticalSlice)
-		end
-	end
-
-	return didDash == true
-end
-
-function GearServiceClient:_tryVDashWithGrace()
-	if not self._executeHeld or not self._hookLeftHeld or not self._hookRightHeld then
-		return
-	end
-	self._vDashAttemptId += 1
-	local attemptId = self._vDashAttemptId
-	local startTime = os.clock()
-	local graceTime = CONFIG.VDashAttachGraceTime
-
-	while self._equipped and self._executeHeld and self._maneuver and os.clock() - startTime <= graceTime do
-		if attemptId ~= self._vDashAttemptId then
-			return
-		end
-		if not self._hookLeftHeld or not self._hookRightHeld then
-			return
-		end
-		if self:_tryVDash() then
-			return
-		end
-		task.wait()
-	end
-end
-
-function GearServiceClient:_onExecute(state: string)
-	if state == "Began" then
-		self._executeHeld = true
-		self._executePressedAt = os.clock()
-		task.spawn(function()
-			self:_tryVDashWithGrace()
-		end)
-	elseif state == "Ended" then
-		self._executeHeld = false
-		self._executePressedAt = 0
-		self._vDashAttemptId += 1
-		if self._maneuver and self._maneuver.EndVDash then
-			self._maneuver:EndVDash()
-		end
-		self:_refreshODMAnimations()
-	end
-end
-
-function GearServiceClient:_onBoost(state: string)
-	if state ~= "Began" and state ~= "Ended" then
-		return
-	end
-	local character = self._character
-	if character and character:GetAttribute("MoveState") == "Vaulting" then
-		if state == "Ended" and self._maneuver then
-			self._boostHeld = false
-			self._maneuver:SetBoost(false)
-		end
-		return
-	end
-	if state == "Began" and not (self._maneuver and self._maneuver:IsHooking()) then
-		return
-	end
-	if not self:_canUseODM() or not self._maneuver then
-		return
-	end
-
-	if state == "Began" then
-		local hasGas = self:_hasEnoughBoostGas()
-		self:_setBoostAllowed(hasGas)
-		if not hasGas then
-			self._boostHeld = false
-			self._maneuver:SetBoost(false)
-			self:_setOutOfGasSwinging(true)
-			self:_refreshODMAnimations()
-			return
-		end
-		self._boostHeld = true
-		self._maneuver:SetBoost(true)
-		self:_playGearSound("GasBurst")
-		self:_setOutOfGasSwinging(false)
-	else
-		self._boostHeld = false
-		self._maneuver:SetBoost(false)
-		self:_setBoostAllowed(self:_hasEnoughBoostGas())
-	end
-	self:_refreshODMAnimations()
-end
-
 function GearServiceClient:_onToggleHandles(state: string)
 	if state ~= "Began" or not self._equipped then
+		return
+	end
+	if self._movement and not self._movement:CanToggleArm() then
 		return
 	end
 	self:_setHandlesOut(not self._handlesOut, true)
@@ -2056,21 +1539,6 @@ end
 
 function GearServiceClient:_bindInputs()
 	local binds = {
-		HookLeft = function(_, state, obj)
-			self:_onHook("Left", state, obj)
-		end,
-		HookRight = function(_, state, obj)
-			self:_onHook("Right", state, obj)
-		end,
-		GearBoost = function(_, state)
-			self:_onBoost(state)
-		end,
-		OrbitLeft = function(_, state)
-			self:_onOrbit("Left", state)
-		end,
-		OrbitRight = function(_, state)
-			self:_onOrbit("Right", state)
-		end,
 		GearHandles = function(_, state)
 			self:_onToggleHandles(state)
 		end,
@@ -2079,9 +1547,6 @@ function GearServiceClient:_bindInputs()
 		end,
 		HeavyAttack = function(_, state)
 			self:_onHeavyAttack(state)
-		end,
-		Execute = function(_, state)
-			self:_onExecute(state)
 		end,
 		ReloadBlades = function(_, state)
 			self:_onReloadBlades(state)
@@ -2105,48 +1570,58 @@ function GearServiceClient:equip(character: Model?, presetName: string?)
 		return
 	end
 
-	self:unequip()
+	-- Local teardown only: the server re-equips in place (re-sending an
+	-- unequip here would strip the movers off the new character).
+	self:unequip(true)
 
 	local preset = presetName or CONFIG.DefaultGearPreset
 	self._character = character
 	self._rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	self._loadoutPreset = preset
 
+	-- The server builds the movers and wires on equip; the movement waits
+	-- for them.
+	networker:fire("clientEquipGear", preset)
+
 	self:_createGearInstance(preset)
-	self:_createManeuver(character, preset)
 	self:_loadODMAnimations()
 	self:_cacheGearSounds()
 
 	self._equipped = true
 	self._handlesOut = false
 	self._bladesOut = false
-	self._gasDrainAccumulator = 0
-	self._gasCrossfeedAccumulator = 0
 	self._currentLoopAnimation = nil
-	self._orbitStartPlayingUntil = 0
 
-	self:_setBoostAllowed(self:_hasEnoughBoostGas())
 	self:_applyGearVisibility()
 	self:_setCordAttachmentsHolstered(true)
 	self:_resetInputState()
 	self:_setupSpeedLinesGui()
 
 	InputServiceClient:SetContextEnabled("ODM", true)
+
+	self:_createMovement(character)
+	if not self._equipped or self._character ~= character then
+		return
+	end
+	self:_syncGasFromMovement()
 	self:_refreshODMAnimations()
 
-	networker:fire("clientEquipGear", preset)
-
-	self._runtimeConnection = RunService.RenderStepped:Connect(function(dt)
+	if self._runtimeConnection then
+		self._runtimeConnection:Disconnect()
+	end
+	self._runtimeConnection = RunService.RenderStepped:Connect(function()
 		if self._equipped then
-			self:_updateODMWallRunAnimation()
+			self:_syncGasFromMovement()
 			self:_refreshODMAnimations()
 			self:_updateScreenSpeedLines()
-			self:_updateGasUsage(dt)
 		end
 	end)
+
+	-- The reference gear starts armed.
+	self:_setHandlesOut(true, true)
 end
 
-function GearServiceClient:unequip()
+function GearServiceClient:unequip(localOnly: boolean?)
 	self:_setGearLoopSound("GasHiss", false)
 	for name in self._gearSounds do
 		self:_stopGearSound(name)
@@ -2168,17 +1643,18 @@ function GearServiceClient:unequip()
 	end
 	self._heldAttackRelease = nil
 
-	if self._maneuver then
-		self._maneuver:Destroy()
-		self._maneuver = nil
+	if self._movement then
+		self._movement:Destroy()
+		self._movement = nil
 	end
+	pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.Backpack, true)
 
 	if self._gearInstance then
 		self._gearInstance:destroy()
 		self._gearInstance = nil
 	end
 
-	if self._equipped then
+	if self._equipped and not localOnly then
 		networker:fire("clientUnequipGear")
 	end
 
@@ -2187,11 +1663,7 @@ function GearServiceClient:unequip()
 	self._bladesOut = false
 	self._character = nil
 	self._rootPart = nil
-	self._wallRunSide = nil
 	self._currentLoopAnimation = nil
-	self._orbitStartPlayingUntil = 0
-	self._gasDrainAccumulator = 0
-	self._gasCrossfeedAccumulator = 0
 
 	for _, key in
 		{
@@ -2434,6 +1906,9 @@ function GearServiceClient:crossfeedGas(dt: number)
 end
 
 function GearServiceClient:refillGas()
+	if self._movement then
+		self._movement:RefillGas()
+	end
 	networker:fire("clientRefillGas")
 end
 
@@ -2478,23 +1953,16 @@ end
 ------------------------------------------------------------
 
 local DEFAULT_KEYBINDS = {
-	HookLeft     = "Q",
-	HookRight    = "E",
-	OrbitLeft    = "Q",
-	OrbitRight   = "E",
-	GearBoost    = "Space",
-	GearBlock    = "LeftControl",
+	-- Q / E hooks, A / D / W / S strafe, Space boost, LeftShift burst,
+	-- V hooked burst and LeftControl brake are read directly by
+	-- ODMMovementClient.
+	GearHandles  = "F",
 	ReloadBlades = "R",
-	GearHandles  = "Z",
-	HeavyAttack  = "G",
-	SwitchODMMode = "X",
-	CheckGas     = "C",
 	Attack       = "MouseButton1",
-	Sprint       = "LeftShift",
-	CrouchSlide  = "LeftControl",
-	JumpVault    = "Space",
+	HeavyAttack  = "T",
+	CheckGas     = "G",
+	GearBlock    = "P",
 	ShiftLock    = "LeftAlt",
-	Interaction  = "F",
 }
 
 function GearServiceClient:init()

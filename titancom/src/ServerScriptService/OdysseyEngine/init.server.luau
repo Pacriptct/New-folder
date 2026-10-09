@@ -7,5 +7,8 @@ AudioGroups.startAutoRoute()
 
 game:GetService("Players").CharacterAutoLoads = true
 
+local ODMWireService = require(script.Services.ODMWireService)
+ODMWireService:init()
+
 local GearService = require(script.Services.GearService)
 GearService:init()

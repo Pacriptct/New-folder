@@ -1,14 +1,22 @@
+-- src/shared/Gear/GearTuning.luau
+-- Shared definitions for per-part gear tuning. The player picks a value 1..5
+-- per part at the final assembly table; 3 is neutral. Each step away from 3
+-- moves the part's primary stat by STEP and its trade-off stat by STEP in
+-- the opposite direction (or the same direction, when both stats are linked).
+
 local GearTuning = {}
 
 GearTuning.MIN_VALUE = 1
 GearTuning.MAX_VALUE = 5
 GearTuning.DEFAULT_VALUE = 3
-GearTuning.STEP = 0.075
+GearTuning.STEP = 0.075 -- 7.5% per increment, so the extreme positions are ±15%
 
 GearTuning.PART_ORDER = {
 	"Launchers", "Reels", "GasCanisters", "Nozzles", "Scabbards", "Blades", "Handles",
 }
 
+-- Direction = 1  -> tuning value up (towards 5) raises the multiplier
+-- Direction = -1 -> tuning value up lowers the multiplier
 GearTuning.PART_DEFINITIONS = {
 	Launchers = {
 		Primary  = { Stat = "HookRangeMultiplier", Direction = 1, Label = "Hook Range" },
@@ -82,6 +90,7 @@ function GearTuning.NormalizeTuning(tuning)
 	return out
 end
 
+-- Returns the multiplier this single (partType, value) pair contributes to a stat.
 local function contribution(definition, role, value)
 	local entry = definition[role]
 	if not entry then return 1 end
@@ -89,7 +98,8 @@ local function contribution(definition, role, value)
 	return 1 + delta
 end
 
-
+-- Aggregate every part's tuning into per-stat multipliers. Stats not affected
+-- by any part default to 1.
 function GearTuning.ComputeMultipliers(tuning)
 	tuning = GearTuning.NormalizeTuning(tuning)
 	local stats = {
@@ -112,6 +122,8 @@ function GearTuning.ComputeMultipliers(tuning)
 	return stats
 end
 
+-- For UI tooltips: returns { Primary = {Label, Delta}, Tradeoff = {Label, Delta} }
+-- where Delta is a percentage like "+15%" or "-7.5%" relative to neutral.
 function GearTuning.PreviewForPart(partType, value)
 	local def = GearTuning.PART_DEFINITIONS[partType]
 	if not def then return nil end

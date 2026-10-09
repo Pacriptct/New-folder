@@ -1,4 +1,16 @@
-local WeaponBase = require(script.Parent.WeaponBase)
+-- BladeWeapon: Dual-blade melee weapon used by standard ODM gear.
+--
+-- Tracks per-blade durability and a reserve pool. The server uses this object
+-- as the canonical durability ledger; the client mirrors state from
+-- gearResources broadcasts so the two stay in sync without a separate table.
+--
+-- Swing lifecycle:
+--   beginSwing()  → opens a hit-detection window; returns false if no blade
+--   releaseSwing() → server hook: validates hit reports from client
+--   endSwing()    → closes the window regardless of outcome
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local WeaponBase = require(ReplicatedStorage.Shared.Gear.Weapons.WeaponBase)
 
 local BladeWeapon = setmetatable({}, { __index = WeaponBase })
 BladeWeapon.__index = BladeWeapon
@@ -53,6 +65,7 @@ end
 
 function BladeWeapon:equip()
 	WeaponBase.equip(self)
+	-- Draw the first pair automatically when handles come out.
 	if not self._hasActivePair and self._reserves > 0 then
 		self:_drawNewPair()
 	end

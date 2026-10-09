@@ -1,4 +1,14 @@
-local WeaponBase = require(script.Parent.WeaponBase)
+-- GunWeapon: Ranged weapon for Anti-Personnel ODM gear.
+--
+-- Tracks ammo and a reload timer. Reload is driven by update(dt) so it
+-- integrates naturally with GearBase:update() on both client (smooth progress
+-- bar) and server (authoritative completion timestamp).
+--
+-- fire() returns false when out of ammo and auto-starts a reload, matching the
+-- feel of standard shooter games and keeping the caller logic simple.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local WeaponBase = require(ReplicatedStorage.Shared.Gear.Weapons.WeaponBase)
 
 local GunWeapon = setmetatable({}, { __index = WeaponBase })
 GunWeapon.__index = GunWeapon
@@ -55,12 +65,16 @@ end
 
 function GunWeapon:unequip()
 	WeaponBase.unequip(self)
+	-- Preserve reload state across unequip so the player can't cancel by
+	-- holstering. If that becomes desirable, just clear the flags here.
 end
 
 ------------------------------------------------------------
 -- Attack / Fire API
 ------------------------------------------------------------
 
+-- Returns false when reloading or on cooldown.
+-- Auto-triggers a reload when the magazine is empty so callers need not.
 function GunWeapon:attack(_context: any?): boolean
 	if self._isReloading then
 		return false

@@ -51,6 +51,17 @@ function AnimationController:LoadLayer(layer, animator, animationsFolder, groupR
 		if success and track then
 			local name = fullKey(layer, key)
 
+			-- A concurrent load of the same layer may have registered (and
+			-- started) a track for this key while we were preloading. Stop and
+			-- drop it, or it plays on untracked and nothing can stop it.
+			local previous = self._tracks[name]
+			if previous and previous.Track ~= track then
+				pcall(function()
+					previous.Track:Stop(0)
+					previous.Track:Destroy()
+				end)
+			end
+
 			self._tracks[name] = {
 				Track = track,
 				Layer = layer,

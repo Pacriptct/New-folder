@@ -64,13 +64,12 @@ function General:GetHandCFrame(armCF)
 	return ((armCF * CFrame.new(handOffset)) * CFrame.Angles(0, math.rad(90), 135)):Inverse()
 end
 
-function General:EquipODM(Player: Player)
-	local Character = Player.Character
+function General:EquipODMOnCharacter(Character)
 	if not Character then
 		return
 	end
 
-	task.spawn(function()
+	do
 		local GearFolder = RS.Assets.Gear.Model
 
 		local Torso = Character:FindFirstChild("Torso")
@@ -171,6 +170,18 @@ function General:EquipODM(Player: Player)
 
 		General:SetModelTransparency(RSwordHolstered, 0)
 		General:SetModelTransparency(LSwordHolstered, 0)
+	end
+end
+
+-- Builds + welds the ODM gear visuals onto the player's live character. Thin
+-- async wrapper around EquipODMOnCharacter (which also serves rebuilt corpses).
+function General:EquipODM(Player: Player)
+	local Character = Player.Character
+	if not Character then
+		return
+	end
+	task.spawn(function()
+		General:EquipODMOnCharacter(Character)
 	end)
 end
 

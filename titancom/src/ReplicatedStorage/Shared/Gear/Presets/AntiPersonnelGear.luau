@@ -1,12 +1,21 @@
+-- AntiPersonnelGear: Factory for Anti-Personnel ODM gear.
+--
+-- Composes: MobilityComponent (reuses Gen4 mobility stats — AP gear is fast)
+--           + GunWeapon (left slot) + GunWeapon (right slot).
+--
+-- Keeping this as a separate factory (rather than a flag on ODMGear) means
+-- the weapon slots carry a completely different type. GearService can call
+-- gear:getWeapon("Left"):attack() and get the right behaviour without any
+-- type-checking switch statement.
 
-
-local GearBase = require(script.Parent.Parent.GearBase)
-local MobilityComponent = require(script.Parent.Parent.MobilityComponent)
-local GunWeapon = require(script.Parent.Parent.Weapons.GunWeapon)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GearBase = require(ReplicatedStorage.Shared.Gear.GearBase)
+local MobilityComponent = require(ReplicatedStorage.Shared.Gear.MobilityComponent)
+local GunWeapon = require(ReplicatedStorage.Shared.Gear.Weapons.GunWeapon)
 
 local AntiPersonnelGear = {}
 
-
+-- AP gear borrows Gen4 mobility stats; the faster preset fits the assault role.
 local AP_MOBILITY_PRESET = "Gen4Gear"
 
 local GUN_CONFIG = {

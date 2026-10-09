@@ -7,24 +7,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TitanClient = require(ReplicatedStorage.Shared.Modules.TitanClient)
 
 local DEFAULT_KEYBINDS = {
-	-- ODM
-	HookLeft        = "Q",
-	HookRight       = "E",
-	OrbitLeft       = "A",
-	OrbitRight      = "D",
-	GearBoost       = "Space",
-	GearBlock       = "P",
-	ReloadBlades    = "R",
-	GearHandles     = "H",
-	HeavyAttack     = "T",
-	CheckGas        = "G",
-	-- General / shared
-	Attack          = "MouseButton1",
-	Sprint          = "LeftShift",
-	CrouchSlide     = "LeftControl",
-	JumpVault       = "Space",
-	ShiftLock       = "LeftAlt",
-	Interaction     = "F",
+	-- Q / E hooks, A / D / W / S strafe, Space boost, LeftShift burst,
+	-- V hooked burst and LeftControl brake are read directly by
+	-- ODMMovementClient.
+	GearHandles  = "F",
+	ReloadBlades = "R",
+	Attack       = "MouseButton1",
+	HeavyAttack  = "T",
+	CheckGas     = "G",
+	GearBlock    = "P",
+	ShiftLock    = "LeftAlt",
 }
 
 InputServiceClient:init()

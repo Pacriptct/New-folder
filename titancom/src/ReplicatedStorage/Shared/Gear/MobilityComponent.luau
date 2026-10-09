@@ -1,4 +1,17 @@
-local GearConfig = require(script.Parent.Parent.Configs.GearConfig)
+-- MobilityComponent: ODM movement state manager.
+--
+-- Owns gas tanks, hook attachment state, and momentum value. It does NOT
+-- run physics — that lives in ODMMovementClient (driven by GearServiceClient).
+-- The physics engine queries and mutates this component; the server reads it
+-- to validate gas consumption and hook events without re-simulating physics.
+--
+-- This separation means:
+--   • The server never needs to run rope/constraint math.
+--   • The client never needs a separate gas-tracking table.
+--   • Swapping physics implementations only touches GearServiceClient.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GearConfig = require(ReplicatedStorage.Shared.Configs.Gear.GearConfig)
 
 local MobilityComponent = {}
 MobilityComponent.__index = MobilityComponent
@@ -64,7 +77,7 @@ function MobilityComponent:init(gear)
 end
 
 -- equip() is intentionally left as a no-op stub. The client physics layer
--- (GearServiceClient / ManeuverModule) performs actual constraint setup; this component just holds state.
+-- (GearServiceClient / ODMMovementClient) performs actual constraint setup; this component just holds state.
 function MobilityComponent:equip() end
 
 function MobilityComponent:unequip()

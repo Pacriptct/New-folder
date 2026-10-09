@@ -5,6 +5,7 @@ local player = Players.LocalPlayer
 local lastRagdoll = -math.huge
 local lastRagdollToken = 0
 local lastBounced = -math.huge
+local wasRagdolled = false
 
 local RagdollClient = {}
 
@@ -48,14 +49,16 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 
+	-- Held while ragdolled; released only on the change, since the ODM
+	-- movement drives PlatformStand the rest of the time.
 	if isRagdolled then
 		humanoid.PlatformStand = true
-		humanoid.AutoRotate = false
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-	else
-		humanoid.PlatformStand = false
-		humanoid.AutoRotate = true
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+	end
+	if (isRagdolled == true) ~= wasRagdolled then
+		wasRagdolled = isRagdolled == true
+		humanoid.PlatformStand = wasRagdolled
+		humanoid.AutoRotate = not wasRagdolled
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not wasRagdolled)
 	end
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)

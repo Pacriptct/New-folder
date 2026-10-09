@@ -1,8 +1,17 @@
-
+-- GearBase: Composition root for all equippable gear.
+--
+-- A Gear owns a Mobility component and a named table of Weapon slots.
+-- It does not extend any component — it drives them. This means adding a new
+-- gear type (Anti-Personnel, Thunder Spear, etc.) is a matter of swapping
+-- components in, not climbing an inheritance tree.
+--
+-- Neither server nor client specific. Both sides create instances; each side
+-- calls only the methods relevant to it.
 
 local GearBase = {}
 GearBase.__index = GearBase
 
+-- The minimal interface every component (Mobility or Weapon) must satisfy.
 export type Component = {
 	init: (self: any, gear: any) -> (),
 	equip: (self: any) -> (),
@@ -42,6 +51,7 @@ function GearBase.new(owner: Player, config: GearConfig): GearBase
 	return self
 end
 
+-- Propagate init to all owned components. Call once after construction.
 function GearBase:init()
 	if self.Mobility then
 		self.Mobility:init(self)
@@ -79,6 +89,8 @@ function GearBase:unequip()
 	end
 end
 
+-- Called each frame (client physics loop or server tick). Guards against
+-- updating unequipped gear so callers need not check themselves.
 function GearBase:update(dt: number)
 	if not self._equipped then
 		return
