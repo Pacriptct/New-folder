@@ -91,7 +91,14 @@ local function loadTrack(animator: Animator, name: string): any
 	local ok, track = pcall(function()
 		return animator:LoadAnimation(animation)
 	end)
-	return if ok and track then track else newDummyTrack()
+	if not ok or not track then
+		return newDummyTrack()
+	end
+	local priority = CFG.AnimationPriorities[name]
+	if priority then
+		track.Priority = priority
+	end
+	return track
 end
 
 -- Starts a looping track without restarting it every step.
@@ -312,6 +319,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 
 	-- << VARIABLES >> --
 	local PreviousTickVelocity = 0
+	local PreviousPlatformStand = false
 	local Splat = false
 	local OnGround = true
 	local Obstructed = false
@@ -1156,7 +1164,10 @@ function ODMMovementClient.new(character: Model, options: Options)
 
 		local CurrentVelocity = CalculateVelocity().Magnitude
 		local CurrentAngularVelocity = RootPart.AssemblyAngularVelocity.Magnitude
-		local VelocityDifference = math.round(math.abs(CurrentVelocity - PreviousTickVelocity))
+		-- Speed lost since last tick; checked against last tick's PlatformStand
+		-- since landing can turn it off this tick before the check runs.
+		local VelocityDifference = math.round(PreviousTickVelocity - CurrentVelocity)
+		local WasPlatformStanding = PreviousPlatformStand
 
 		PreviousTickVelocity = CurrentVelocity
 
@@ -1404,7 +1415,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 		end
 
 		if VelocityDifference >= CFG.SplatVelocityDelta and not Bursting then
-			if not Splat and Humanoid.PlatformStand then
+			if not Splat and WasPlatformStanding then
 				local Timeout = 2.5 + (VelocityDifference / 175)
 				task.spawn(SplatFunction, Timeout)
 			end
@@ -1434,6 +1445,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 		GasTick()
 		GasCrossfeed()
 		GasVisualizer()
+		PreviousPlatformStand = Humanoid.PlatformStand
 	end))
 
 	setWiring(false)

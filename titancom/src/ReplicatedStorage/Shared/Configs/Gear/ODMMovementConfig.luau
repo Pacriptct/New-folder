@@ -69,9 +69,9 @@ ODMMovementConfig.SlowFlipAngularSpeed = 8
 ODMMovementConfig.ForwardBlendStartSpeed = 100
 ODMMovementConfig.ForwardBlendRange = 240
 
--- A speed change of at least this much in one tick while PlatformStanding
--- (and not bursting) splats the player.
-ODMMovementConfig.SplatVelocityDelta = 200
+-- Losing at least this much speed in one tick while airborne or sliding (and
+-- not bursting) splats the player: slamming into a wall or the ground.
+ODMMovementConfig.SplatVelocityDelta = 120
 
 ------------------------------------------------------------
 -- Forces (built on the HumanoidRootPart when the gear is equipped)
@@ -132,6 +132,28 @@ ODMMovementConfig.AnimationFolders = {
 	{ "src", "animations", "gear", "ODMG" },
 	{ "Assets", "Animations", "ODMG" },
 	{ "Assets", "Animations", "ODM" },
+}
+
+-- Priority each movement animation plays at. Poses sit above the default
+-- walk/fall animations and the gear idle; one-shots sit above the poses.
+local P = Enum.AnimationPriority
+ODMMovementConfig.AnimationPriorities = {
+	Falling = P.Movement,
+	GroundSlide = P.Movement,
+	ForwardHooking = P.Movement,
+	HookedBoostIdle = P.Movement,
+	ForwardODM1 = P.Movement,
+	ForwardODM2 = P.Movement,
+	ForwardODM3 = P.Movement,
+	ForwardODM4 = P.Movement,
+	ForwardODM5 = P.Movement,
+	EHookShoot = P.Action,
+	QHookShoot = P.Action,
+	FastFlip = P.Action2,
+	SlowFlip = P.Action2,
+	Boost = P.Action2,
+	GasFlip = P.Action2,
+	HookedBoost = P.Action2,
 }
 
 -- Reference animation -> Odyssey animations to fall back on when the

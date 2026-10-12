@@ -143,6 +143,64 @@ local function sustainWireDraw(state: State, side: string)
 	end)
 end
 
+-- Hooks on anything that moves on its own (an unanchored assembly: a titan, a
+-- spinning dummy) aren't tied to the part itself. The rope would couple the
+-- player to whatever drives that part, and a motor or a server-owned titan
+-- flings them. Instead the rope goes to an anchored, invisible stand-in that
+-- follows the hit point every frame, so the hook still moves with the part
+-- but no force passes between the two.
+local proxyFolder: Folder? = nil
+
+local function isStatic(part: BasePart): boolean
+	if part.Anchored then
+		return true
+	end
+	local root = part.AssemblyRootPart
+	return root ~= nil and root.Anchored
+end
+
+local function hookAnchor(target: BasePart, point: Vector3, owner: BasePart): BasePart
+	if isStatic(target) then
+		return target
+	end
+	if not proxyFolder or not proxyFolder.Parent then
+		proxyFolder = Instance.new("Folder")
+		proxyFolder.Name = "ODMHookAnchors"
+		proxyFolder.Parent = workspace
+	end
+	local offset = target.CFrame:ToObjectSpace(CFrame.new(point))
+	local proxy = Instance.new("Part")
+	proxy.Name = "HookAnchor"
+	proxy.Anchored = true
+	proxy.CanCollide = false
+	proxy.CanQuery = false
+	proxy.CanTouch = false
+	proxy.Transparency = 1
+	proxy.Size = Vector3.new(0.2, 0.2, 0.2)
+	proxy.CFrame = target.CFrame * offset
+	proxy.Parent = proxyFolder
+
+	local follow
+	follow = RunService.Heartbeat:Connect(function()
+		if not proxy.Parent or not target:IsDescendantOf(workspace) or not owner:IsDescendantOf(workspace) then
+			follow:Disconnect()
+			proxy:Destroy()
+			return
+		end
+		proxy.CFrame = target.CFrame * offset
+	end)
+	-- The hook point lives on the stand-in; when the hook is let go (its
+	-- attachment destroyed) or the player's character is gone, the stand-in
+	-- goes with it.
+	proxy.ChildRemoved:Connect(function()
+		if #proxy:GetChildren() == 0 then
+			follow:Disconnect()
+			proxy:Destroy()
+		end
+	end)
+	return proxy
+end
+
 local function getState(player: Player): State?
 	local state = states[player]
 	if state and state.Character == player.Character and state.Root.Parent then
@@ -240,9 +298,10 @@ function ODMWireService:attachHook(player: Player, side: string, point: Vector3,
 		old:Destroy()
 	end
 
+	local anchor = hookAnchor(target, point, state.Root)
 	local hookPoint = Instance.new("Attachment")
 	hookPoint.Name = "HookAttachPoint"
-	hookPoint.Parent = target
+	hookPoint.Parent = anchor
 	hookPoint.WorldPosition = wires.FirePoint.WorldPosition
 
 	local dist = distance(point, state.Root.Position)
@@ -259,7 +318,10 @@ function ODMWireService:attachHook(player: Player, side: string, point: Vector3,
 
 	wiggle(wires.FauxWire)
 	wires.FauxRope.Visible = false
-	TweenService:Create(hookPoint, TweenInfo.new(travelTime, Enum.EasingStyle.Linear), { WorldPosition = point }):Play()
+	-- Tweened in the anchor's own space so the hook lands on the spot it was
+	-- aimed at even if that part moves while it flies.
+	local landing = anchor.CFrame:PointToObjectSpace(point)
+	TweenService:Create(hookPoint, TweenInfo.new(travelTime, Enum.EasingStyle.Linear), { Position = landing }):Play()
 	task.wait(travelTime)
 
 	if wires.Wire.Attachment1 ~= hookPoint then
