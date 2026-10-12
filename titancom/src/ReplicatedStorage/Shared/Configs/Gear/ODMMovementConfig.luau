@@ -87,21 +87,19 @@ ODMMovementConfig.Rope = {
 	MinLength = 6, -- slow reel never takes the wire shorter than this
 }
 
--- A/D while hooked orbit around the hook(s), Odyssey-style, instead of the
--- reference's sideways strafe force. You're steered towards a point beside
--- the hook at your current distance (clamped), so you swing round it in an
--- arc. Holding Space while orbiting orbits faster. Orbiting uses the strafe
+-- A/D while hooked orbit around the hook(s): somewhere between the
+-- reference strafe and Odyssey's orbit. A sideways push around the hook
+-- builds you up to orbit speed and eases off once you're there; gravity and
+-- the rope stay in charge of everything else, so it still swings like a
+-- pendulum instead of floating. Faster while Space is held. Uses the strafe
 -- gas costs (A drains the right tank, D the left).
 ODMMovementConfig.Orbit = {
 	Enabled = true, -- false goes back to the reference strafe
-	Speed = 210,
-	BoostMultiplier = 1.25, -- orbit speed while Space is held
-	BoostDistanceMultiplier = 1, -- orbit distance while Space is held
-	MinDistance = 25,
-	MaxDistance = 200,
-	EntrySnap = 1, -- 0..1, how much velocity snaps onto the orbit when it starts
-	Responsiveness = 2.8, -- steering per second after the entry snap
-	MaxAcceleration = 900, -- studs/s^2
+	Speed = 150, -- sideways speed the push builds you up to
+	BoostMultiplier = 1.2, -- target speed while Space is held
+	Responsiveness = 2.5, -- how quickly it closes the gap to that speed (per second)
+	MaxAcceleration = 160, -- the push never accelerates you harder than this, studs/s^2
+	MinAcceleration = 40, -- always at least this much push while below target
 }
 
 -- Horizontal air drag while swinging, as a multiple of speed (the reference

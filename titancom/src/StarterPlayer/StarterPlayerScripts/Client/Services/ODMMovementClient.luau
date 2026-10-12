@@ -806,45 +806,31 @@ function ODMMovementClient.new(character: Model, options: Options)
 		return (accel * mass + Vector3.new(0, workspace.Gravity * mass, 0)) * blend
 	end
 
-	-- Odyssey orbit: steer towards a point beside the hook at the current
-	-- distance (clamped), which carries you round it in an arc. The first
-	-- frame snaps velocity onto the orbit so entry reads as a deliberate bank.
-	local function CalculateOrbitForce(Velocity: Vector3, Side: string, Entering: boolean): Vector3
+	-- Orbit: a sideways push around the hook(s) that builds you up to orbit
+	-- speed and eases off once you're there. Only the sideways part of your
+	-- velocity is touched; gravity and the rope handle the rest, so the orbit
+	-- swings rather than floats.
+	local function CalculateOrbitForce(Velocity: Vector3, Side: string): Vector3
 		local O = CFG.Orbit
-		local mass = RootPart.AssemblyMass
-		local gravity = Vector3.new(0, workspace.Gravity * mass, 0)
-		local center = GetMeanHook()
-		local position = RootPart.Position
-		local toHook = center - position
-		local distance = toHook.Magnitude
-		if distance < 0.5 then
-			return gravity
+		local toHook = GetMeanHook() - RootPart.Position
+		local flat = Vector3.new(toHook.X, 0, toHook.Z)
+		if flat.Magnitude < 0.5 then
+			return Vector3.zero
+		end
+		-- Horizontal tangent: A goes round to the left, D to the right.
+		local tangent = flat.Unit:Cross(Vector3.yAxis)
+		if Side == "Left" then
+			tangent = -tangent
 		end
 
-		local look = CFrame.lookAt(position, center)
-		local right = look.RightVector
-		if right.Magnitude < 0.5 then
-			right = CurrentCamera.CFrame.RightVector
+		local target = O.Speed * (if Boost then O.BoostMultiplier else 1)
+		local sideways = Velocity:Dot(tangent)
+		local shortfall = target - sideways
+		if shortfall <= 0 then
+			return Vector3.zero -- already orbiting at least that fast; don't brake
 		end
-		local orbitDistance = math.clamp(distance, O.MinDistance, O.MaxDistance)
-		if Boost then
-			orbitDistance *= O.BoostDistanceMultiplier
-		end
-		local orbitPoint = center + (if Side == "Left" then -right else right) * orbitDistance
-		local toOrbit = orbitPoint - position
-		local direction = if toOrbit.Magnitude > 0.1 then toOrbit.Unit else look.LookVector
-		local desired = direction * O.Speed * (if Boost then O.BoostMultiplier else 1)
-
-		if Entering then
-			RootPart.AssemblyLinearVelocity = Velocity:Lerp(desired, math.clamp(O.EntrySnap, 0, 1))
-			Velocity = RootPart.AssemblyLinearVelocity
-		end
-
-		local accel = (desired - Velocity) * O.Responsiveness
-		if accel.Magnitude > O.MaxAcceleration then
-			accel = accel.Unit * O.MaxAcceleration
-		end
-		return accel * mass + gravity
+		local accel = math.clamp(shortfall * O.Responsiveness, O.MinAcceleration, O.MaxAcceleration)
+		return tangent * accel * RootPart.AssemblyMass
 	end
 
 	local function ApplyVerticalForce()
@@ -1391,7 +1377,6 @@ function ODMMovementClient.new(character: Model, options: Options)
 				NewOrbitSide = "Right"
 			end
 		end
-		local EnteringOrbit = NewOrbitSide ~= nil and NewOrbitSide ~= OrbitSide
 		if NewOrbitSide ~= OrbitSide then
 			OrbitSide = NewOrbitSide
 			if CameraService and CameraService.SetODMOrbit then
@@ -1408,7 +1393,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 			setEffect("Gas", Boost)
 			Humanoid.PlatformStand = true
 			HookForce.Enabled = true
-			HookForce.Force = CalculateOrbitForce(CalculateVelocity(), OrbitSide, EnteringOrbit)
+			HookForce.Force = CalculateOrbitForce(CalculateVelocity(), OrbitSide)
 		elseif Boost and (LeftHookAttached or RightHookAttached) and not Flip.Value then
 			setSound("GasHiss", true)
 			if not (LeftStrafe or RightStrafe or UpStrafe or DownStrafe) or (LeftStrafe and RightStrafe and UpStrafe and DownStrafe) then
@@ -1487,7 +1472,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 			play(FallingAnim)
 			DragForce.Force = CalculateDragForce()
 			-- The hybrid reel sets its own speed; drag would only fight it.
-			if (Reeling or OrbitSide) and not Braking then
+			if Reeling and not Braking then
 				DragForce.Enabled = false
 			end
 		else
