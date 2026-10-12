@@ -7,6 +7,8 @@
 --                   wiggling beam out over the hook's travel time. Once it
 --                   lands, a sagging FauxRope is drawn from the launcher.
 --   retractHook  -- unties the wire and flies the beam back to the launcher.
+--   setRopeMode  -- "SlowReel" shortens the out wires slowly, "Release" pays
+--                   them out (slack); nil for neither. Space's reel wins.
 --   setWiring    -- boosting on/off. While boosting, every out wire is reeled
 --                   in each step; otherwise wires only ever shorten as the
 --                   player closes in (so swings tighten, never loosen).
@@ -49,6 +51,7 @@ type State = {
 	WasWiring: boolean,
 	Hooking: boolean,
 	Splatting: boolean,
+	RopeMode: string?,
 	Out: { [string]: boolean },
 	Wires: { [string]: Wires },
 }
@@ -134,7 +137,8 @@ local function sustainWireDraw(state: State, side: string)
 			end
 			local dist = distance(hookPoint.WorldPosition, state.Root.Position)
 			local fauxDist = distance(hookPoint.WorldPosition, wires.FirePoint.WorldPosition)
-			if dist <= wires.Wire.Length then
+			-- Releasing pays the wire out; don't take the slack straight back.
+			if dist <= wires.Wire.Length and state.RopeMode ~= "Release" then
 				wires.Wire.Length = dist - WIRE.SustainPerStep
 				wires.FauxRope.Length = fauxDist * 1.001
 			end
@@ -238,6 +242,7 @@ function ODMWireService:onEquip(player: Player)
 		WasWiring = false,
 		Hooking = false,
 		Splatting = false,
+		RopeMode = nil,
 		Out = { Left = false, Right = false },
 		Wires = {},
 	}
@@ -398,6 +403,13 @@ function ODMWireService:retractHook(player: Player, side: string, auto: boolean,
 	wires.FauxRope.Visible = true
 end
 
+function ODMWireService:setRopeMode(player: Player, mode: string?)
+	local state = getState(player)
+	if state then
+		state.RopeMode = if mode == "SlowReel" or mode == "Release" then mode else nil
+	end
+end
+
 function ODMWireService:setWiring(player: Player, wiring: boolean)
 	local state = getState(player)
 	if state then
@@ -465,7 +477,10 @@ end
 -- Reel
 ------------------------------------------------------------
 
-local function step()
+local ROPE = ODMMovementConfig.Rope
+local MAX_ROPE_LENGTH = ODMMovementConfig.MaxHookDistance + 50
+
+local function step(_, dt: number)
 	for player, state in states do
 		if not state.Root.Parent then
 			continue
@@ -488,6 +503,16 @@ local function step()
 			end
 
 			local dist = distance(hookPoint.WorldPosition, state.Root.Position)
+			if not state.GlobalWiring and state.RopeMode == "SlowReel" then
+				local floor = math.max(ROPE.MinLength, minimumReelDistance)
+				if wires.Wire.Length > floor then
+					wires.Wire.Length = math.max(floor, math.min(wires.Wire.Length, dist) - ROPE.SlowReelSpeed * dt)
+					wires.FauxRope.Length = wires.Wire.Length * 1.005
+				end
+			elseif not state.GlobalWiring and state.RopeMode == "Release" then
+				wires.Wire.Length = math.min(MAX_ROPE_LENGTH, wires.Wire.Length + ROPE.ReleaseSpeed * dt)
+				wires.FauxRope.Length = wires.Wire.Length * 1.005
+			end
 			if state.GlobalWiring then
 				wires.FauxWire.Attachment1 = wires.FauxRope.Attachment1
 				if dist - WIRE.ReelPerStep <= wires.Wire.Length and dist > minimumReelDistance then
@@ -516,6 +541,7 @@ function ODMWireService:init()
 		self.attachHook,
 		self.retractHook,
 		self.setWiring,
+		self.setRopeMode,
 		self.effect,
 		self.splat,
 	})

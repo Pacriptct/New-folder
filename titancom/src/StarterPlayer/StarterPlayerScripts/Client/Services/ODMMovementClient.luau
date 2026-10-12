@@ -322,6 +322,9 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local PreviousPlatformStand = false
 	local Reeling = false
 	local OrbitSide: string? = nil
+	local SlowReelHeld = false
+	local ReleaseHeld = false
+	local RopeMode: string? = nil
 	local ReelStartTime = 0
 	local ReelMomentum = 0
 	local Splat = false
@@ -938,6 +941,24 @@ function ODMMovementClient.new(character: Model, options: Options)
 		networker:fire("setWiring", wiring)
 	end
 
+	-- Slow reel / release, sent only when it changes. Space's reel takes over
+	-- on the server while it's held.
+	local function updateRopeMode()
+		local hooked = LeftHookAttached or RightHookAttached
+		local mode = nil
+		if hooked and not Splat then
+			if SlowReelHeld and not ReleaseHeld then
+				mode = "SlowReel"
+			elseif ReleaseHeld and not SlowReelHeld and not Braking then
+				mode = "Release"
+			end
+		end
+		if mode ~= RopeMode then
+			RopeMode = mode
+			networker:fire("setRopeMode", mode)
+		end
+	end
+
 	-- << CONNECTIONS >> --
 	table.insert(connections, UserInputService.InputBegan:Connect(function(Key, IsTyping)
 		if IsTyping or Splat or destroyed then
@@ -945,6 +966,13 @@ function ODMMovementClient.new(character: Model, options: Options)
 		end
 		if not options.IsArmed() then
 			return
+		end
+
+		if Key.KeyCode == CFG.Rope.SlowReelKey then
+			SlowReelHeld = true
+		end
+		if Key.KeyCode == CFG.Rope.ReleaseKey and (LeftHookAttached or RightHookAttached) then
+			ReleaseHeld = true
 		end
 
 		if Key.KeyCode == Enum.KeyCode.W and not OnGround then
@@ -1135,6 +1163,13 @@ function ODMMovementClient.new(character: Model, options: Options)
 		if Key.KeyCode == Enum.KeyCode.Space then
 			Boost = false
 			setWiring(Boost)
+		end
+
+		if Key.KeyCode == CFG.Rope.SlowReelKey then
+			SlowReelHeld = false
+		end
+		if Key.KeyCode == CFG.Rope.ReleaseKey then
+			ReleaseHeld = false
 		end
 	end))
 
@@ -1562,6 +1597,13 @@ function ODMMovementClient.new(character: Model, options: Options)
 			RightHookAttachPoint = RightHookTarget.CFrame:PointToWorldSpace(RightHookOffset)
 		end
 
+		if RopeMode == "SlowReel" and not Boost then
+			if not GasDrain(GAS.SlowReelTick, "Both") then
+				SlowReelHeld = false
+			end
+		end
+		updateRopeMode()
+
 		GasTick()
 		GasCrossfeed()
 		GasVisualizer()
@@ -1576,6 +1618,9 @@ function ODMMovementClient.new(character: Model, options: Options)
 
 	function self:_onSplatEnded()
 		Splat = false
+		-- Key-ups during the splat were ignored.
+		SlowReelHeld = UserInputService:IsKeyDown(CFG.Rope.SlowReelKey)
+		ReleaseHeld = UserInputService:IsKeyDown(CFG.Rope.ReleaseKey)
 	end
 
 	function self:IsHooking(): boolean

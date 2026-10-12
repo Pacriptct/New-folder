@@ -41,6 +41,7 @@ ODMMovementConfig.Gas = {
 	DownStrafeTick = 0.15 / 120, -- both
 	Burst = 10, -- both (LeftShift)
 	HookedBurst = 24, -- both (V)
+	SlowReelTick = 0.15 / 120, -- both, per tick while slow reeling (C)
 }
 
 ------------------------------------------------------------
@@ -71,6 +72,19 @@ ODMMovementConfig.Reel = {
 	-- Within this distance of the hook the reel eases off so you don't
 	-- overshoot and jitter around it.
 	ArriveDistance = 15,
+}
+
+-- Rope control on top of the Space reel, both on the real rope so the swing
+-- carries on: hold SlowReelKey to shorten the wire(s) slowly (a tighter,
+-- faster swing), hold ReleaseKey while hooked to pay the wire out for slack
+-- (you drop and swing wider; let go and the rope holds at the new length).
+-- LeftControl while not hooked still brakes.
+ODMMovementConfig.Rope = {
+	SlowReelKey = Enum.KeyCode.C,
+	ReleaseKey = Enum.KeyCode.LeftControl,
+	SlowReelSpeed = 18, -- studs of wire taken in per second
+	ReleaseSpeed = 35, -- studs of wire paid out per second
+	MinLength = 6, -- slow reel never takes the wire shorter than this
 }
 
 -- A/D while hooked orbit around the hook(s), Odyssey-style, instead of the
