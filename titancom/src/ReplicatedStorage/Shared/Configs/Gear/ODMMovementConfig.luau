@@ -54,9 +54,11 @@ ODMMovementConfig.Gas = {
 -- builds momentum the longer you hold it. Letting go hands your exact
 -- velocity back to the swing, at the now shorter rope length.
 ODMMovementConfig.Reel = {
-	-- "Hybrid" is the steering reel above; "Reference" is the original
-	-- force-based reel, kept to compare against.
-	Style = "Hybrid",
+	-- What holding Space does while hooked:
+	--   "Odyssey"   Odyssey's gear movement (see ODMMovementConfig.Odyssey)
+	--   "Hybrid"    a softer steering reel (the settings below)
+	--   "Reference" the original force-based reel
+	Style = "Odyssey",
 
 	Speed = 145, -- reel speed at momentum 1
 	MinMomentum = 0.35, -- reel momentum floor when you start reeling slowly
@@ -109,9 +111,51 @@ ODMMovementConfig.Orbit = {
 	MinAcceleration = 40, -- always at least this much push while below target
 }
 
--- Horizontal air drag while swinging, as a multiple of speed (the reference
--- used 4). Lower keeps the pendulum going longer.
+-- Odyssey's movement, used while Space is held when Reel.Style is "Odyssey".
+-- Values are Odyssey's Gen 1 gear. Each step your velocity moves LerpSpeed of
+-- the way (at 60 fps) towards the hook direction at
+-- Speed * Momentum * BoostMultiplier. Momentum builds while you pull and
+-- fades while you don't; starting a pull at speed rebuilds it from that speed.
+ODMMovementConfig.Odyssey = {
+	Speed = 145,
+	BoostMultiplier = 1.18,
+	LerpSpeed = 0.06,
+	MaxForce = 99000,
+
+	MomentumGain = 0.014, -- per step (60 fps) while pulling
+	MomentumLoss = 0.00055, -- per step while not
+	MinMomentum = 0.18,
+	MaxMomentum = 1.35,
+	RehookMomentumFromSpeed = 0.55,
+	MinRetainedMomentum = 0.35,
+
+	-- A/D while pulling: "Curve" bends the pull to that side (see
+	-- Reel.StrafeCurve) so you spiral in; "Orbit" is Odyssey's orbit.
+	SpaceStrafe = "Curve",
+	OrbitSpeed = 210,
+	OrbitBoostMultiplier = 1.25,
+	OrbitLerpSpeed = 0.028,
+	OrbitEntrySnapStrength = 1,
+	MinOrbitDistance = 25,
+	MaxOrbitDistance = 200,
+}
+
+-- The swing while Space isn't held. "Odyssey" is Odyssey's rope swing: the
+-- rope locks at your distance plus RopeSlack and never takes itself in (use
+-- the slow reel for that), with a very light drag on your whole velocity.
+-- "Reference" is this gear's: the rope keeps taking in slack as you close in,
+-- with horizontal air drag.
+ODMMovementConfig.Swing = {
+	Style = "Odyssey",
+	RopeSlack = 1.25,
+	VelocityDrag = 0.99935, -- velocity kept per step (60 fps), Odyssey style
+}
+
+-- Horizontal air drag, as a multiple of speed (the reference used 4). Swing
+-- drag is while hooked on the "Reference" swing; air drag is while flying
+-- unhooked.
 ODMMovementConfig.SwingDrag = 2
+ODMMovementConfig.AirDrag = 2
 
 ------------------------------------------------------------
 -- Bursts

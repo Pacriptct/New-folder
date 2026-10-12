@@ -120,9 +120,32 @@ local function wiggle(fauxWire: Beam)
 	end)
 end
 
--- Not boosting: the wire only ever shortens as the player closes in.
+local SWING = ODMMovementConfig.Swing
+
+-- Odyssey swing: the rope locks at the current distance plus a little slack
+-- and doesn't take itself in.
+local function lockWire(state: State, wires: Wires)
+	local hookPoint = wires.Wire.Attachment1
+	if not hookPoint then
+		return
+	end
+	local dist = distance(hookPoint.WorldPosition, state.Root.Position)
+	local fauxDist = distance(hookPoint.WorldPosition, wires.FirePoint.WorldPosition)
+	wires.Wire.Length = math.max(dist + SWING.RopeSlack, ODMMovementConfig.Rope.MinLength)
+	wires.FauxRope.Length = fauxDist * 1.001 + SWING.RopeSlack
+end
+
+-- Not boosting: the wire only ever shortens as the player closes in (the
+-- reference swing), or locks at its length (the Odyssey swing).
 local function sustainWireDraw(state: State, side: string)
 	if state.Hooking then
+		return
+	end
+	if SWING.Style == "Odyssey" then
+		local wires = state.Wires[side]
+		if wires and state.Out[side] then
+			lockWire(state, wires)
+		end
 		return
 	end
 	local wires = state.Wires[side]

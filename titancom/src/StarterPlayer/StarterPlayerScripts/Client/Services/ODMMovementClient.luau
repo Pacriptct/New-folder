@@ -282,13 +282,14 @@ function ODMMovementClient.new(character: Model, options: Options)
 
 	local BodyGyro = RootPart:WaitForChild("BodyGyro", 10) :: AlignOrientation
 	local BoostForce = RootPart:WaitForChild("BoostForce", 10) :: LinearVelocity
+	local ReelVelocity = RootPart:WaitForChild("ReelVelocity", 10) :: LinearVelocity
 	local BoostGyro = RootPart:WaitForChild("BoostGyro", 10) :: BodyGyro
 	local HookForce = RootPart:WaitForChild("HookForce", 10) :: VectorForce
 	local StrafeForce = RootPart:WaitForChild("StrafeForce", 10) :: VectorForce
 	local DragForce = RootPart:WaitForChild("DragForce", 10) :: VectorForce
 	local FlipForce = RootPart:WaitForChild("FlipForce", 10) :: VectorForce
 	local VerticalForce = RootPart:WaitForChild("VerticalForce", 10) :: VectorForce
-	if not (BodyGyro and BoostForce and BoostGyro and HookForce and StrafeForce and DragForce and FlipForce and VerticalForce) then
+	if not (BodyGyro and BoostForce and ReelVelocity and BoostGyro and HookForce and StrafeForce and DragForce and FlipForce and VerticalForce) then
 		warn("[ODMMovementClient] Movers missing on the HumanoidRootPart; is the gear equipped on the server?")
 		return nil
 	end
@@ -323,6 +324,9 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local Reeling = false
 	local OrbitSide: string? = nil
 	local ReelCurve = 0 -- -1 (A) .. 1 (D), eased towards the held key
+	local OdysseyMomentum = CFG.Odyssey.MinMomentum
+	local OdysseyPulling = false
+	local OdysseyOrbitSide: string? = nil
 	local SlowReelHeld = false
 	local ReleaseHeld = false
 	local RopeMode: string? = nil
@@ -847,6 +851,77 @@ function ODMMovementClient.new(character: Model, options: Options)
 		return tangent * accel * RootPart.AssemblyMass
 	end
 
+	-- Odyssey's movement while Space is held: velocity moves LerpSpeed of the
+	-- way (per 60 fps step) towards the hook direction at
+	-- Speed * Momentum * BoostMultiplier, through a strong LinearVelocity, so
+	-- the pull owns your velocity like Odyssey's BodyVelocity does.
+	local function UpdateOdysseyPull(Velocity: Vector3, dt: number)
+		local OD = CFG.Odyssey
+		if not OdysseyPulling then
+			OdysseyPulling = true
+			-- Rehooking / starting a pull at speed rebuilds momentum from it.
+			local flatSpeed = Vector3.new(Velocity.X, 0, Velocity.Z).Magnitude
+			local rebuilt = (flatSpeed / OD.Speed) * OD.RehookMomentumFromSpeed
+			OdysseyMomentum = math.clamp(math.max(OdysseyMomentum, rebuilt), OD.MinRetainedMomentum, OD.MaxMomentum)
+		end
+		OdysseyMomentum = math.clamp(OdysseyMomentum + OD.MomentumGain * dt * 60, OD.MinMomentum, OD.MaxMomentum)
+
+		local target = GetMeanHook()
+		local offset = target - RootPart.Position
+		if offset.Magnitude <= 0.1 then
+			ReelVelocity.VectorVelocity = Vector3.zero
+			ReelVelocity.Enabled = true
+			return
+		end
+		local lookVector = offset.Unit
+		local distance = offset.Magnitude
+		local rightVector = lookVector:Cross(Vector3.yAxis)
+		if rightVector.Magnitude <= 0.01 then
+			rightVector = RootPart.CFrame.RightVector
+		end
+		rightVector = rightVector.Unit
+
+		local desired
+		local rate
+		local orbitSide = if OD.SpaceStrafe == "Orbit" then OrbitSide else nil
+		if orbitSide then
+			local orbitDistance = math.clamp(distance, OD.MinOrbitDistance, OD.MaxOrbitDistance)
+			local orbitPosition = target + (if orbitSide == "Left" then -rightVector else rightVector) * orbitDistance
+			local toOrbit = orbitPosition - RootPart.Position
+			local direction = if toOrbit.Magnitude > 0.1 then toOrbit.Unit else lookVector
+			desired = direction * OD.OrbitSpeed * OD.OrbitBoostMultiplier
+			rate = OD.OrbitLerpSpeed
+			if orbitSide ~= OdysseyOrbitSide then
+				-- Odyssey's one-shot entry snap onto the orbit.
+				Velocity = Velocity:Lerp(desired, math.clamp(OD.OrbitEntrySnapStrength, 0, 1))
+			end
+		else
+			local direction = lookVector
+			if ReelCurve ~= 0 then
+				local bent = direction + rightVector * ReelCurve * CFG.Reel.StrafeCurve
+				if bent.Magnitude > 0.01 then
+					direction = bent.Unit
+				end
+			end
+			desired = direction * OD.Speed * OdysseyMomentum * OD.BoostMultiplier
+			rate = OD.LerpSpeed
+		end
+		OdysseyOrbitSide = orbitSide
+
+		ReelVelocity.VectorVelocity = Velocity:Lerp(desired, math.clamp(rate * 100 * dt, 0, 1))
+		ReelVelocity.Enabled = true
+	end
+
+	local function StopOdysseyPull(dt: number)
+		if OdysseyPulling then
+			OdysseyPulling = false
+			OdysseyOrbitSide = nil
+			ReelVelocity.Enabled = false
+		end
+		local OD = CFG.Odyssey
+		OdysseyMomentum = math.clamp(OdysseyMomentum - OD.MomentumLoss * dt * 60, OD.MinMomentum, OD.MaxMomentum)
+	end
+
 	local function ApplyVerticalForce()
 		if (UpStrafe and DownStrafe) or (not UpStrafe and not DownStrafe) then
 			VerticalForce.Force = Vector3.zero
@@ -923,7 +998,8 @@ function ODMMovementClient.new(character: Model, options: Options)
 				DragForce.Enabled = false
 			else
 				DragForce.Enabled = true
-				Force = Unit * (Speed * CFG.SwingDrag)
+				local hooked = LeftHookAttached or RightHookAttached
+				Force = Unit * (Speed * (if hooked then CFG.SwingDrag else CFG.AirDrag))
 			end
 		else
 			DragForce.Enabled = true
@@ -1410,6 +1486,10 @@ function ODMMovementClient.new(character: Model, options: Options)
 		local Hooked = LeftHookAttached or RightHookAttached
 		local ReelingNow = Boost and Hooked and not Flip.Value
 			and CFG.Reel.Style ~= "Reference"
+		local OdysseyNow = ReelingNow and CFG.Reel.Style == "Odyssey" and not Bursting and not Splat
+		if not OdysseyNow then
+			StopOdysseyPull(dt)
+		end
 		if OrbitSide and not ReelingNow then
 			Reeling = false
 			setSound("GasHiss", true)
@@ -1445,6 +1525,12 @@ function ODMMovementClient.new(character: Model, options: Options)
 			end
 			if CFG.Reel.Style == "Reference" then
 				HookForce.Force = CalculateBoostVelocity(ForceResultant)
+			elseif CFG.Reel.Style == "Odyssey" then
+				Humanoid.PlatformStand = true
+				HookForce.Enabled = false
+				if OdysseyNow then
+					UpdateOdysseyPull(CalculateVelocity(), dt)
+				end
 			else
 				Humanoid.PlatformStand = true
 				HookForce.Force = CalculateReelForce(CalculateVelocity(), dt)
@@ -1496,9 +1582,17 @@ function ODMMovementClient.new(character: Model, options: Options)
 			GroundSlide:Stop()
 			play(FallingAnim)
 			DragForce.Force = CalculateDragForce()
-			-- The hybrid reel sets its own speed; drag would only fight it.
-			if Reeling and not Braking then
+			-- The reels set their own speed; drag would only fight them. The
+			-- Odyssey swing uses its own light drag instead (below).
+			local OdysseySwing = CFG.Swing.Style == "Odyssey" and (LeftHookAttached or RightHookAttached)
+			if (Reeling or OdysseyPulling or OdysseySwing) and not Braking then
 				DragForce.Enabled = false
+			end
+			if OdysseySwing and not OdysseyPulling and not Reeling and not Splat then
+				local keep = math.clamp(CFG.Swing.VelocityDrag, 0.95, 1)
+				if keep < 1 then
+					RootPart.AssemblyLinearVelocity *= keep ^ (dt * 60)
+				end
 			end
 		else
 			FallingAnim:Stop()

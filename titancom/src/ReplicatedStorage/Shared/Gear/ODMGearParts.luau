@@ -39,6 +39,7 @@ ODMGearParts.SoundKeys = {
 
 ODMGearParts.ForceNames = {
 	"BoostForce",
+	"ReelVelocity",
 	"BoostGyro",
 	"BodyGyro",
 	"HookForce",
@@ -219,6 +220,16 @@ function ODMGearParts.buildForces(character: Model)
 	boostForce.MaxForce = cfg.BoostMaxForce
 	boostForce.Name = "BoostForce"
 	boostForce.Parent = root
+
+	-- Odyssey-style pull while Space is held (ODMMovementClient sets its
+	-- velocity each step; off otherwise).
+	local reelVelocity = Instance.new("LinearVelocity")
+	reelVelocity.Attachment0 = attachment
+	reelVelocity.Enabled = false
+	reelVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	reelVelocity.MaxForce = ODMMovementConfig.Odyssey.MaxForce
+	reelVelocity.Name = "ReelVelocity"
+	reelVelocity.Parent = root
 
 	local boostGyro = Instance.new("BodyGyro")
 	boostGyro.MaxTorque = Vector3.zero
