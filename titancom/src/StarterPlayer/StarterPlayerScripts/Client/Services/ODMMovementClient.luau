@@ -384,7 +384,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local ForwardAnims = {}
 	for i = 1, 5 do
 		local track = loadTrack(Animator, "ForwardODM" .. i)
-		if not track.Dummy then
+		if typeof(track) ~= "table" then -- real AnimationTrack, not a dummy
 			table.insert(ForwardAnims, track)
 		end
 	end
