@@ -321,6 +321,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local PreviousTickVelocity = 0
 	local PreviousPlatformStand = false
 	local Reeling = false
+	local OrbitSide: string? = nil
 	local ReelStartTime = 0
 	local ReelMomentum = 0
 	local Splat = false
@@ -802,6 +803,47 @@ function ODMMovementClient.new(character: Model, options: Options)
 		return (accel * mass + Vector3.new(0, workspace.Gravity * mass, 0)) * blend
 	end
 
+	-- Odyssey orbit: steer towards a point beside the hook at the current
+	-- distance (clamped), which carries you round it in an arc. The first
+	-- frame snaps velocity onto the orbit so entry reads as a deliberate bank.
+	local function CalculateOrbitForce(Velocity: Vector3, Side: string, Entering: boolean): Vector3
+		local O = CFG.Orbit
+		local mass = RootPart.AssemblyMass
+		local gravity = Vector3.new(0, workspace.Gravity * mass, 0)
+		local center = GetMeanHook()
+		local position = RootPart.Position
+		local toHook = center - position
+		local distance = toHook.Magnitude
+		if distance < 0.5 then
+			return gravity
+		end
+
+		local look = CFrame.lookAt(position, center)
+		local right = look.RightVector
+		if right.Magnitude < 0.5 then
+			right = CurrentCamera.CFrame.RightVector
+		end
+		local orbitDistance = math.clamp(distance, O.MinDistance, O.MaxDistance)
+		if Boost then
+			orbitDistance *= O.BoostDistanceMultiplier
+		end
+		local orbitPoint = center + (if Side == "Left" then -right else right) * orbitDistance
+		local toOrbit = orbitPoint - position
+		local direction = if toOrbit.Magnitude > 0.1 then toOrbit.Unit else look.LookVector
+		local desired = direction * O.Speed * (if Boost then O.BoostMultiplier else 1)
+
+		if Entering then
+			RootPart.AssemblyLinearVelocity = Velocity:Lerp(desired, math.clamp(O.EntrySnap, 0, 1))
+			Velocity = RootPart.AssemblyLinearVelocity
+		end
+
+		local accel = (desired - Velocity) * O.Responsiveness
+		if accel.Magnitude > O.MaxAcceleration then
+			accel = accel.Unit * O.MaxAcceleration
+		end
+		return accel * mass + gravity
+	end
+
 	local function ApplyVerticalForce()
 		if (UpStrafe and DownStrafe) or (not UpStrafe and not DownStrafe) then
 			VerticalForce.Force = Vector3.zero
@@ -846,6 +888,11 @@ function ODMMovementClient.new(character: Model, options: Options)
 	end
 
 	local function ApplyStrafeForce()
+		if CFG.Orbit.Enabled then
+			-- A/D orbit instead (see CalculateOrbitForce).
+			StrafeForce.Force = Vector3.zero
+			return
+		end
 		if (LeftHookAttached and RightHookAttached) and not StrafeBlock then
 			if LeftStrafe or RightStrafe then
 				StrafeForce.Force = strafeAround(LeftHookAttachPoint:Lerp(RightHookAttachPoint, 0.5))
@@ -1245,14 +1292,14 @@ function ODMMovementClient.new(character: Model, options: Options)
 		if UpStrafe and not StrafeBlock and not Splat then
 			local Success = GasDrain(GAS.UpStrafeTick, "Both")
 			if not Success then
-				RightStrafe = false
+				UpStrafe = false
 			end
 		end
 
 		if DownStrafe and not StrafeBlock and not Splat then
 			local Success = GasDrain(GAS.DownStrafeTick, "Both")
 			if not Success then
-				RightStrafe = false
+				DownStrafe = false
 			end
 		end
 
@@ -1298,7 +1345,36 @@ function ODMMovementClient.new(character: Model, options: Options)
 			end
 		end
 
-		if Boost and (LeftHookAttached or RightHookAttached) and not Flip.Value then
+		-- A or D (not both) while hooked and airborne: orbit.
+		local NewOrbitSide = nil
+		if CFG.Orbit.Enabled and (LeftHookAttached or RightHookAttached) and not OnGround
+			and not StrafeBlock and not Splat and not Bursting and not Flip.Value
+		then
+			if LeftStrafe and not RightStrafe then
+				NewOrbitSide = "Left"
+			elseif RightStrafe and not LeftStrafe then
+				NewOrbitSide = "Right"
+			end
+		end
+		local EnteringOrbit = NewOrbitSide ~= nil and NewOrbitSide ~= OrbitSide
+		if NewOrbitSide ~= OrbitSide then
+			OrbitSide = NewOrbitSide
+			if CameraService and CameraService.SetODMOrbit then
+				CameraService:SetODMOrbit(OrbitSide)
+			end
+		end
+
+		if OrbitSide then
+			-- Reeling restarts (and blends back in) once the orbit key is let go.
+			Reeling = false
+			setSound("GasHiss", true)
+			setEffect("MainBoost", Boost)
+			setEffect("BoostTrail", Boost)
+			setEffect("Gas", Boost)
+			Humanoid.PlatformStand = true
+			HookForce.Enabled = true
+			HookForce.Force = CalculateOrbitForce(CalculateVelocity(), OrbitSide, EnteringOrbit)
+		elseif Boost and (LeftHookAttached or RightHookAttached) and not Flip.Value then
 			setSound("GasHiss", true)
 			if not (LeftStrafe or RightStrafe or UpStrafe or DownStrafe) or (LeftStrafe and RightStrafe and UpStrafe and DownStrafe) then
 				setEffect("MainBoost", true)
@@ -1376,7 +1452,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 			play(FallingAnim)
 			DragForce.Force = CalculateDragForce()
 			-- The hybrid reel sets its own speed; drag would only fight it.
-			if Reeling and not Braking then
+			if (Reeling or OrbitSide) and not Braking then
 				DragForce.Enabled = false
 			end
 		else
@@ -1581,6 +1657,9 @@ function ODMMovementClient.new(character: Model, options: Options)
 		end
 		if CameraService and CameraService.SetFOVOverride then
 			CameraService:SetFOVOverride(nil)
+		end
+		if CameraService and CameraService.SetODMOrbit then
+			CameraService:SetODMOrbit(nil)
 		end
 		setWiring(false)
 		CursorFollow:Destroy()
