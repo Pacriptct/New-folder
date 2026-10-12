@@ -320,6 +320,9 @@ function ODMMovementClient.new(character: Model, options: Options)
 	-- << VARIABLES >> --
 	local PreviousTickVelocity = 0
 	local PreviousPlatformStand = false
+	local Reeling = false
+	local ReelStartTime = 0
+	local ReelMomentum = 0
 	local Splat = false
 	local OnGround = true
 	local Obstructed = false
@@ -768,6 +771,37 @@ function ODMMovementClient.new(character: Model, options: Options)
 		return (((Force + HookComponent) + VerticalPush) * GlobalModifier) + GravityCompensation + (VerticalCompensation * 0.25)
 	end
 
+	-- Hybrid reel: steer velocity towards the hook(s) at a speed that builds
+	-- with momentum, fading in over BlendTime. Gravity is cancelled while
+	-- reeling so the reel line is straight.
+	local function CalculateReelForce(Velocity: Vector3, dt: number): Vector3
+		local R = CFG.Reel
+		local now = os.clock()
+		local speed = Velocity.Magnitude
+		if not Reeling then
+			Reeling = true
+			ReelStartTime = now
+			ReelMomentum = math.clamp(speed / R.Speed, R.MinMomentum, R.MaxMomentum)
+		end
+		ReelMomentum = math.min(R.MaxMomentum, ReelMomentum + R.MomentumGain * dt)
+
+		local toHook = GetMeanHook() - RootPart.Position
+		local distance = toHook.Magnitude
+		if distance < 0.01 then
+			return Vector3.new(0, workspace.Gravity * RootPart.AssemblyMass, 0)
+		end
+		local arrive = math.clamp(distance / R.ArriveDistance, 0.2, 1)
+		local desired = toHook.Unit * R.Speed * ReelMomentum * arrive
+
+		local mass = RootPart.AssemblyMass
+		local accel = (desired - Velocity) * R.Responsiveness
+		if accel.Magnitude > R.MaxAcceleration then
+			accel = accel.Unit * R.MaxAcceleration
+		end
+		local blend = math.clamp((now - ReelStartTime) / R.BlendTime, 0, 1)
+		return (accel * mass + Vector3.new(0, workspace.Gravity * mass, 0)) * blend
+	end
+
 	local function ApplyVerticalForce()
 		if (UpStrafe and DownStrafe) or (not UpStrafe and not DownStrafe) then
 			VerticalForce.Force = Vector3.zero
@@ -839,7 +873,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 				DragForce.Enabled = false
 			else
 				DragForce.Enabled = true
-				Force = Unit * (Speed * 4)
+				Force = Unit * (Speed * CFG.SwingDrag)
 			end
 		else
 			DragForce.Enabled = true
@@ -1157,7 +1191,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 	floorParams.FilterType = Enum.RaycastFilterType.Exclude
 
 	-- Physics runtime
-	table.insert(connections, RunService.Stepped:Connect(function()
+	table.insert(connections, RunService.Stepped:Connect(function(_, dt: number)
 		if destroyed or not RootPart.Parent then
 			return
 		end
@@ -1288,8 +1322,14 @@ function ODMMovementClient.new(character: Model, options: Options)
 					Humanoid.PlatformStand = true
 				end
 			end
-			HookForce.Force = CalculateBoostVelocity(ForceResultant)
+			if CFG.Reel.Style == "Reference" then
+				HookForce.Force = CalculateBoostVelocity(ForceResultant)
+			else
+				Humanoid.PlatformStand = true
+				HookForce.Force = CalculateReelForce(CalculateVelocity(), dt)
+			end
 		else
+			Reeling = false
 			if (LeftStrafe or RightStrafe or UpStrafe or DownStrafe) and (LeftHookAttached or RightHookAttached) and Humanoid.PlatformStand then
 				setSound("GasHiss", true)
 			else
@@ -1335,6 +1375,10 @@ function ODMMovementClient.new(character: Model, options: Options)
 			GroundSlide:Stop()
 			play(FallingAnim)
 			DragForce.Force = CalculateDragForce()
+			-- The hybrid reel sets its own speed; drag would only fight it.
+			if Reeling and not Braking then
+				DragForce.Enabled = false
+			end
 		else
 			FallingAnim:Stop()
 			ForwardHooking:Stop()

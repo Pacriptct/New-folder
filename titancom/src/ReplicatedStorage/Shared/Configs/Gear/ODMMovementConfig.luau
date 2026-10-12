@@ -44,6 +44,40 @@ ODMMovementConfig.Gas = {
 }
 
 ------------------------------------------------------------
+-- Swing and reel
+------------------------------------------------------------
+
+-- Not holding Space you swing freely on the rope (a real pendulum: gravity,
+-- momentum, the rope only ever shortens). Holding Space reels you in
+-- Odyssey-style: your velocity is steered towards the hook(s) and the reel
+-- builds momentum the longer you hold it. Letting go hands your exact
+-- velocity back to the swing, at the now shorter rope length.
+ODMMovementConfig.Reel = {
+	-- "Hybrid" is the steering reel above; "Reference" is the original
+	-- force-based reel, kept to compare against.
+	Style = "Hybrid",
+
+	Speed = 145, -- reel speed at momentum 1
+	MinMomentum = 0.35, -- reel momentum floor when you start reeling slowly
+	MaxMomentum = 1.35, -- top reel speed = Speed * MaxMomentum
+	MomentumGain = 0.6, -- momentum gained per second of reeling
+
+	-- How hard velocity is steered towards the reel direction (per second).
+	-- Higher snaps onto the hook line faster; lower keeps more of your swing.
+	Responsiveness = 4,
+	MaxAcceleration = 650, -- cap on that steering, studs/s^2
+	BlendTime = 0.15, -- the reel fades in over this long when Space goes down
+
+	-- Within this distance of the hook the reel eases off so you don't
+	-- overshoot and jitter around it.
+	ArriveDistance = 15,
+}
+
+-- Horizontal air drag while swinging, as a multiple of speed (the reference
+-- used 4). Lower keeps the pendulum going longer.
+ODMMovementConfig.SwingDrag = 2
+
+------------------------------------------------------------
 -- Bursts
 ------------------------------------------------------------
 
