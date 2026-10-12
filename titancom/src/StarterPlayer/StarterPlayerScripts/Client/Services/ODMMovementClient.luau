@@ -382,7 +382,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local ForwardHooking = loadTrack(Animator, "ForwardHooking")
 	local GasFlip = loadTrack(Animator, "GasFlip")
 	local ForwardAnims = {}
-	for i = 1, 4 do
+	for i = 1, 5 do
 		local track = loadTrack(Animator, "ForwardODM" .. i)
 		if not track.Dummy then
 			table.insert(ForwardAnims, track)

@@ -137,7 +137,7 @@ ODMMovementConfig.AnimationFolders = {
 -- Reference animation -> Odyssey animations to fall back on when the
 -- reference one isn't in the place.
 ODMMovementConfig.AnimationFallbacks = {
-	FastFlip = { "HookFlip" },
+	FastFlip = { "FastFlips", "HookFlip" },
 	SlowFlip = { "HookFlip" },
 	GroundSlide = { "Sliding" },
 	RHIdle = { "RHIdle" },
@@ -145,16 +145,17 @@ ODMMovementConfig.AnimationFallbacks = {
 	EHookShoot = { "RHookStart" },
 	QHookShoot = { "LHookStart" },
 	BaseHookShot = { "DoubleHookStart" },
-	Boost = { "HookFlip" },
+	Boost = { "Burst", "HookFlip" },
 	Falling = {},
-	HookedBoost = { "DoubleHookStart" },
-	HookedBoostIdle = { "DoubleHookIdle" },
-	ForwardHooking = { "HookIdle" },
+	HookedBoost = { "HookedBurstStart", "DoubleHookStart" },
+	HookedBoostIdle = { "HookedBurstIdle", "DoubleHookIdle" },
+	ForwardHooking = { "ForwardODM", "HookIdle" },
 	GasFlip = { "HookFlip" },
 	ForwardODM1 = { "DoubleHookIdle" },
 	ForwardODM2 = {},
 	ForwardODM3 = {},
 	ForwardODM4 = {},
+	ForwardODM5 = {},
 }
 
 return ODMMovementConfig
