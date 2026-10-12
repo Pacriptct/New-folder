@@ -1,5 +1,3 @@
-local titanService = require(script.Parent.OdysseyEngine.Services.TitanService)
-
 local charFolder = Instance.new("Folder")
 charFolder.Name = "Characters"
 charFolder.Parent = workspace
@@ -121,14 +119,7 @@ local function setupCharacter(player, character)
 end
 
 Players.PlayerAdded:Connect(function(player)
-	table.insert(titanService.cachedPlayers, player)
-	
 	player.CharacterAdded:Connect(function(character)
 		setupCharacter(player, character)
 	end)
-end)
-Players.PlayerRemoving:Connect(function(player)
-	if table.find(titanService.cachedPlayers, player) then
-		table.remove(titanService.cachedPlayers, table.find(titanService.cachedPlayers, player))
-	end
 end)

@@ -19,7 +19,6 @@ local InputConfig = {
 		HorseGallop = { Context = "General", Priority = 60, CanHold = true, Exclusive = false },
 		HorseDismount = { Context = "General", Priority = 60, CanHold = false, Exclusive = false },
 		HorseRear = { Context = "General", Priority = 60, CanHold = false, Exclusive = false },
-		TitanShift = { Context = "General", Priority = 60, CanHold = false, Exclusive = false },
 
 		Sprint = { Context = "Movement", Priority = 100, CanHold = true, Exclusive = true },
 		CrouchSlide = { Context = "Movement", Priority = 100, CanHold = true, Exclusive = true },

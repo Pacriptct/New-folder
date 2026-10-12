@@ -13,8 +13,6 @@ local ODMMovementClient = require(script.Parent.ODMMovementClient)
 local StateMachine = require(ReplicatedStorage.Shared.StateMachine)
 local AudioGroups = require(ReplicatedStorage.Shared.Modules.AudioGroups)
 
-local Remotes = ReplicatedStorage.Remotes
-
 local GearServiceClient = {} :: any
 
 local LocalPlayer = Players.LocalPlayer
@@ -1331,60 +1329,6 @@ function GearServiceClient:_playAttackAnimation(animationName: string, isHeavy: 
 	local swingDetectionStarted = false
 	local swingEnded = false
 	local slashPlayed = false
-
-	-- Titan hitbox loop
-	task.spawn(function()
-		local hitCache = {}
-		local bladeMultiplier = self:getStatMultiplier("BladeDamage")
-
-		while self._isSwinging do
-			if self._rootPart then
-				local hitboxParams = OverlapParams.new()
-				hitboxParams.FilterType = Enum.RaycastFilterType.Exclude
-				hitboxParams.FilterDescendantsInstances = {
-					self._character
-				}
-				hitboxParams.CollisionGroup = "ODM_Blade"
-
-				local hitbox = workspace:GetPartBoundsInRadius(self._rootPart.Position, 2, hitboxParams)
-				for i = 1, math.min(#hitbox, 10) do
-					local hit = hitbox[i]
-					if hit and hit.Parent and hit.Parent.Parent then
-						local model = hit.Parent.Parent
-						if model:GetAttribute("IsTitan") and not table.find(hitCache, hit) then
-							table.insert(hitCache, hit)
-							
-							local damage = self._rootPart.AssemblyLinearVelocity.Magnitude * bladeMultiplier
-							local hitName = hit.Name
-
-							if hitName == "Nape" then
-								for i, v in pairs(model:GetDescendants()) do
-									if v:IsA("BasePart") then
-										v.CanCollide = false
-									end
-								end
-								
-								Remotes.Titan.DamageNape:FireServer(hit, model, damage)
-							elseif hitName == "LeftEye" then
-								Remotes.Titan.DamageEyes:FireServer(hit, model, damage, "Left")
-							elseif hitName == "RightEye" then
-								Remotes.Titan.DamageEyes:FireServer(hit, model, damage, "Right")
-							elseif hitName == "LeftArm" then
-								Remotes.Titan.DamageLimb:FireServer(hit, model, damage, "Left", "Arm")
-							elseif hitName == "RightArm" then
-								Remotes.Titan.DamageLimb:FireServer(hit, model, damage, "Right", "Arm")
-							elseif hitName == "LeftLeg" then
-								Remotes.Titan.DamageLimb:FireServer(hit, model, damage, "Left", "Leg")
-							elseif hitName == "RightLeg" then
-								Remotes.Titan.DamageLimb:FireServer(hit, model, damage, "Right", "Leg")
-							end
-						end
-					end
-				end
-			end
-			task.wait()
-		end
-	end)
 
 	local function playSlash()
 		if slashPlayed then return end
