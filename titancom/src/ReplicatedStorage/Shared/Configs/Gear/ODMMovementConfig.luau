@@ -72,6 +72,13 @@ ODMMovementConfig.Reel = {
 	-- Within this distance of the hook the reel eases off so you don't
 	-- overshoot and jitter around it.
 	ArriveDistance = 15,
+
+	-- A/D while reeling curve the reel to that side instead of stopping it,
+	-- so you spiral in. 1 aims 45 degrees off the hook line; 0.5 about 27.
+	StrafeCurve = 0.8,
+	-- How long the curve takes to fade in or out, so letting go of A/D
+	-- doesn't snap you back onto the hook line.
+	StrafeCurveBlendTime = 0.3,
 }
 
 -- Rope control on top of the Space reel, both on the real rope so the swing
@@ -91,12 +98,12 @@ ODMMovementConfig.Rope = {
 -- reference strafe and Odyssey's orbit. A sideways push around the hook
 -- builds you up to orbit speed and eases off once you're there; gravity and
 -- the rope stay in charge of everything else, so it still swings like a
--- pendulum instead of floating. Faster while Space is held. Uses the strafe
+-- pendulum instead of floating. With Space held, A/D curve the reel instead
+-- (see Reel.StrafeCurve). Uses the strafe
 -- gas costs (A drains the right tank, D the left).
 ODMMovementConfig.Orbit = {
 	Enabled = true, -- false goes back to the reference strafe
 	Speed = 150, -- sideways speed the push builds you up to
-	BoostMultiplier = 1.2, -- target speed while Space is held
 	Responsiveness = 2.5, -- how quickly it closes the gap to that speed (per second)
 	MaxAcceleration = 160, -- the push never accelerates you harder than this, studs/s^2
 	MinAcceleration = 40, -- always at least this much push while below target

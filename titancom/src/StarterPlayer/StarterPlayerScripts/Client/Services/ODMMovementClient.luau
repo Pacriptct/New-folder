@@ -322,6 +322,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 	local PreviousPlatformStand = false
 	local Reeling = false
 	local OrbitSide: string? = nil
+	local ReelCurve = 0 -- -1 (A) .. 1 (D), eased towards the held key
 	local SlowReelHeld = false
 	local ReleaseHeld = false
 	local RopeMode: string? = nil
@@ -775,6 +776,17 @@ function ODMMovementClient.new(character: Model, options: Options)
 		return (((Force + HookComponent) + VerticalPush) * GlobalModifier) + GravityCompensation + (VerticalCompensation * 0.25)
 	end
 
+	-- Horizontal direction round the hook point: Left goes round to the left,
+	-- Right to the right. Zero when directly above or below it.
+	local function orbitTangent(toHook: Vector3, Side: string): Vector3
+		local flat = Vector3.new(toHook.X, 0, toHook.Z)
+		if flat.Magnitude < 0.5 then
+			return Vector3.zero
+		end
+		local tangent = flat.Unit:Cross(Vector3.yAxis)
+		return if Side == "Left" then -tangent else tangent
+	end
+
 	-- Hybrid reel: steer velocity towards the hook(s) at a speed that builds
 	-- with momentum, fading in over BlendTime. Gravity is cancelled while
 	-- reeling so the reel line is straight.
@@ -795,7 +807,15 @@ function ODMMovementClient.new(character: Model, options: Options)
 			return Vector3.new(0, workspace.Gravity * RootPart.AssemblyMass, 0)
 		end
 		local arrive = math.clamp(distance / R.ArriveDistance, 0.2, 1)
-		local desired = toHook.Unit * R.Speed * ReelMomentum * arrive
+		-- A/D bend the reel line to that side so you spiral in.
+		local direction = toHook.Unit
+		if ReelCurve ~= 0 then
+			local bent = direction + orbitTangent(toHook, "Right") * ReelCurve * R.StrafeCurve
+			if bent.Magnitude > 0.01 then
+				direction = bent.Unit
+			end
+		end
+		local desired = direction * R.Speed * ReelMomentum * arrive
 
 		local mass = RootPart.AssemblyMass
 		local accel = (desired - Velocity) * R.Responsiveness
@@ -812,18 +832,12 @@ function ODMMovementClient.new(character: Model, options: Options)
 	-- swings rather than floats.
 	local function CalculateOrbitForce(Velocity: Vector3, Side: string): Vector3
 		local O = CFG.Orbit
-		local toHook = GetMeanHook() - RootPart.Position
-		local flat = Vector3.new(toHook.X, 0, toHook.Z)
-		if flat.Magnitude < 0.5 then
+		local tangent = orbitTangent(GetMeanHook() - RootPart.Position, Side)
+		if tangent == Vector3.zero then
 			return Vector3.zero
 		end
-		-- Horizontal tangent: A goes round to the left, D to the right.
-		local tangent = flat.Unit:Cross(Vector3.yAxis)
-		if Side == "Left" then
-			tangent = -tangent
-		end
 
-		local target = O.Speed * (if Boost then O.BoostMultiplier else 1)
+		local target = O.Speed
 		local sideways = Velocity:Dot(tangent)
 		local shortfall = target - sideways
 		if shortfall <= 0 then
@@ -1384,8 +1398,19 @@ function ODMMovementClient.new(character: Model, options: Options)
 			end
 		end
 
-		if OrbitSide then
-			-- Reeling restarts (and blends back in) once the orbit key is let go.
+		-- Ease the reel's curve towards the held side.
+		local curveTarget = if OrbitSide == "Left" then -1 elseif OrbitSide == "Right" then 1 else 0
+		local curveStep = dt / math.max(CFG.Reel.StrafeCurveBlendTime, 0.01)
+		if ReelCurve < curveTarget then
+			ReelCurve = math.min(curveTarget, ReelCurve + curveStep)
+		elseif ReelCurve > curveTarget then
+			ReelCurve = math.max(curveTarget, ReelCurve - curveStep)
+		end
+
+		local Hooked = LeftHookAttached or RightHookAttached
+		local ReelingNow = Boost and Hooked and not Flip.Value
+			and CFG.Reel.Style ~= "Reference"
+		if OrbitSide and not ReelingNow then
 			Reeling = false
 			setSound("GasHiss", true)
 			setEffect("MainBoost", Boost)
@@ -1394,7 +1419,7 @@ function ODMMovementClient.new(character: Model, options: Options)
 			Humanoid.PlatformStand = true
 			HookForce.Enabled = true
 			HookForce.Force = CalculateOrbitForce(CalculateVelocity(), OrbitSide)
-		elseif Boost and (LeftHookAttached or RightHookAttached) and not Flip.Value then
+		elseif Boost and Hooked and not Flip.Value then
 			setSound("GasHiss", true)
 			if not (LeftStrafe or RightStrafe or UpStrafe or DownStrafe) or (LeftStrafe and RightStrafe and UpStrafe and DownStrafe) then
 				setEffect("MainBoost", true)
