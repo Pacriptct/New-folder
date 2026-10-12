@@ -19,12 +19,12 @@ ODMMovementConfig.HookSpeed = 2000
 ODMMovementConfig.GasDrainSpeed = 2
 ODMMovementConfig.GasCrossfeedSpeed = 0.5
 
--- Tank capacity, and how much each tank holds on spawn. A refill tops both
--- tanks up to their max.
+-- Tank capacity, and how much each tank holds when the gear is put on. A
+-- refill tops both tanks up to their max.
 ODMMovementConfig.MaxGasInLeftTank = 1000
 ODMMovementConfig.MaxGasInRightTank = 1000
-ODMMovementConfig.StartGasInLeftTank = 100
-ODMMovementConfig.StartGasInRightTank = 100
+ODMMovementConfig.StartGasInLeftTank = ODMMovementConfig.MaxGasInLeftTank
+ODMMovementConfig.StartGasInRightTank = ODMMovementConfig.MaxGasInRightTank
 
 ------------------------------------------------------------
 -- Gas costs (taken from the tank(s) noted)
